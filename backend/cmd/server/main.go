@@ -46,26 +46,36 @@ func main() {
 		api.POST("/concepts", h.CreateConcept)
 		api.GET("/concepts", h.GetConcepts)
 		api.GET("/concepts/:id", h.GetConcept)
+		api.PUT("/concepts/:id", h.UpdateConcept)
+		api.DELETE("/concepts/:id", h.DeleteConcept)
 
 		// Essay routes
 		api.POST("/essays", h.CreateEssay)
 		api.GET("/essays", h.GetEssays)
 		api.GET("/essays/:id", h.GetEssay)
+		api.PUT("/essays/:id", h.UpdateEssay)
+		api.DELETE("/essays/:id", h.DeleteEssay)
 
 		// Claim routes
 		api.POST("/claims", h.CreateClaim)
 		api.GET("/claims", h.GetClaims)
 		api.GET("/claims/:id", h.GetClaim)
+		api.PUT("/claims/:id", h.UpdateClaim)
+		api.DELETE("/claims/:id", h.DeleteClaim)
 
 		// Source routes
 		api.POST("/sources", h.CreateSource)
 		api.GET("/sources", h.GetSources)
 		api.GET("/sources/:id", h.GetSource)
+		api.PUT("/sources/:id", h.UpdateSource)
+		api.DELETE("/sources/:id", h.DeleteSource)
 
 		// Question routes
 		api.POST("/questions", h.CreateQuestion)
 		api.GET("/questions", h.GetQuestions)
 		api.GET("/questions/:id", h.GetQuestion)
+		api.PUT("/questions/:id", h.UpdateQuestion)
+		api.DELETE("/questions/:id", h.DeleteQuestion)
 
 		// Relationship routes
 		api.POST("/relationships", h.CreateRelationship)

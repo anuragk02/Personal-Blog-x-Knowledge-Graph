@@ -192,6 +192,81 @@ echo "23. Getting All Questions:"
 curl -s "$BASE_URL/api/v1/questions" | jq '. | length' | xargs echo "Found questions:"
 echo
 
+# ====================
+# UPDATE TESTS
+# ====================
+
+echo "🔄 UPDATE OPERATIONS:"
+
+# Update Concept
+if [[ -n "$CONCEPT_ID" ]]; then
+  echo "24. Updating Concept ($CONCEPT_ID):"
+  curl -s -X PUT "$BASE_URL/api/v1/concepts/$CONCEPT_ID" \
+    -H "Content-Type: application/json" \
+    -d '{"name": "Advanced System Dynamics", "summary": "Updated study of complex systems with advanced patterns", "mastery_level": 9}' | jq '.'
+  echo
+fi
+
+# Update Essay
+if [[ -n "$ESSAY_ID" ]]; then
+  echo "25. Updating Essay ($ESSAY_ID):"
+  curl -s -X PUT "$BASE_URL/api/v1/essays/$ESSAY_ID" \
+    -H "Content-Type: application/json" \
+    -d '{"title": "Deep Understanding of Complex Systems", "content": "This updated essay provides deeper insights into how system dynamics can help us understand complex adaptive systems and their emergent properties..."}' | jq '.'
+  echo
+fi
+
+# Update Claim
+if [[ -n "$CLAIM_ID" ]]; then
+  echo "26. Updating Claim ($CLAIM_ID):"
+  curl -s -X PUT "$BASE_URL/api/v1/claims/$CLAIM_ID" \
+    -H "Content-Type: application/json" \
+    -d '{"text": "Complex systems exhibit emergent properties that cannot be predicted from individual components", "confidence_score": 9, "is_verified": true}' | jq '.'
+  echo
+fi
+
+# Update Source
+if [[ -n "$SOURCE_ID" ]]; then
+  echo "27. Updating Source ($SOURCE_ID):"
+  curl -s -X PUT "$BASE_URL/api/v1/sources/$SOURCE_ID" \
+    -H "Content-Type: application/json" \
+    -d '{"title": "Thinking in Systems: A Primer", "author": "Donella H. Meadows", "type": "Book", "url": "https://updated-url.com/thinking-in-systems"}' | jq '.'
+  echo
+fi
+
+# Update Question
+if [[ -n "$QUESTION_ID" ]]; then
+  echo "28. Updating Question ($QUESTION_ID):"
+  curl -s -X PUT "$BASE_URL/api/v1/questions/$QUESTION_ID" \
+    -H "Content-Type: application/json" \
+    -d '{"text": "How do emergent properties arise in complex systems and what are their implications?", "priority": 10, "status": "in-progress"}' | jq '.'
+  echo
+fi
+
+# ====================
+# DELETE TESTS
+# ====================
+
+echo "🗑️ DELETE OPERATIONS:"
+
+# Test deleting (we'll delete some nodes to test the functionality)
+# Create a temporary concept to delete
+echo "29. Creating temporary concept for deletion test:"
+TEMP_CONCEPT_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/concepts" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Temporary Concept", "summary": "This will be deleted", "mastery_level": 1}')
+TEMP_CONCEPT_ID=$(echo $TEMP_CONCEPT_RESPONSE | jq -r '.id')
+echo "Created temporary concept: $TEMP_CONCEPT_ID"
+echo
+
+echo "30. Deleting temporary concept ($TEMP_CONCEPT_ID):"
+curl -s -X DELETE "$BASE_URL/api/v1/concepts/$TEMP_CONCEPT_ID" | jq '.'
+echo
+
+echo "31. Attempting to get deleted concept (should return 404):"
+curl -s "$BASE_URL/api/v1/concepts/$TEMP_CONCEPT_ID" | jq '.'
+echo
+
 echo "✅ Complete Schema API Testing Finished!"
 echo "=================================================="
 echo "Created nodes:"

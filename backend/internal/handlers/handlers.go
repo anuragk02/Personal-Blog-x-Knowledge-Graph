@@ -126,6 +126,84 @@ func (h *Handler) GetConcepts(c *gin.Context) {
 	c.JSON(http.StatusOK, concepts)
 }
 
+func (h *Handler) UpdateConcept(c *gin.Context) {
+	id := c.Param("id")
+	var concept models.Concept
+	if err := c.ShouldBindJSON(&concept); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	query := `MATCH (c:Concept {id: $id})
+			  SET c.name = $name, c.summary = $summary, c.mastery_level = $mastery_level, c.last_reviewed = $last_reviewed
+			  RETURN c.id, c.name, c.summary, c.mastery_level, c.last_reviewed`
+	params := map[string]interface{}{
+		"id":            id,
+		"name":          concept.Name,
+		"summary":       concept.Summary,
+		"mastery_level": concept.MasteryLevel,
+		"last_reviewed": time.Now().Format(time.RFC3339),
+	}
+
+	records, err := h.db.ExecuteRead(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Concept not found"})
+		return
+	}
+
+	record := records[0]
+	updatedConcept := models.Concept{
+		ID:           record["c.id"].(string),
+		Name:         record["c.name"].(string),
+		Summary:      getStringValue(record, "c.summary"),
+		MasteryLevel: getIntValue(record, "c.mastery_level"),
+	}
+
+	if lastReviewedStr := getStringValue(record, "c.last_reviewed"); lastReviewedStr != "" {
+		if lastReviewed, err := time.Parse(time.RFC3339, lastReviewedStr); err == nil {
+			updatedConcept.LastReviewed = lastReviewed
+		}
+	}
+
+	c.JSON(http.StatusOK, updatedConcept)
+}
+
+func (h *Handler) DeleteConcept(c *gin.Context) {
+	id := c.Param("id")
+
+	// First check if concept exists
+	checkQuery := `MATCH (c:Concept {id: $id}) RETURN c.id`
+	checkParams := map[string]interface{}{"id": id}
+
+	records, err := h.db.ExecuteRead(context.Background(), checkQuery, checkParams)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Concept not found"})
+		return
+	}
+
+	// Delete concept and all its relationships
+	deleteQuery := `MATCH (c:Concept {id: $id}) DETACH DELETE c`
+	deleteParams := map[string]interface{}{"id": id}
+
+	_, err = h.db.ExecuteQuery(context.Background(), deleteQuery, deleteParams)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Concept deleted successfully"})
+}
+
 // Relationship operations
 func (h *Handler) CreateRelationship(c *gin.Context) {
 	var rel models.Relationship
@@ -258,6 +336,81 @@ func (h *Handler) GetEssays(c *gin.Context) {
 	c.JSON(http.StatusOK, essays)
 }
 
+func (h *Handler) UpdateEssay(c *gin.Context) {
+	id := c.Param("id")
+	var essay models.Essay
+	if err := c.ShouldBindJSON(&essay); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	query := `MATCH (e:Essay {id: $id})
+			  SET e.title = $title, e.content = $content
+			  RETURN e.id, e.title, e.content, e.created_at`
+	params := map[string]interface{}{
+		"id":      id,
+		"title":   essay.Title,
+		"content": essay.Content,
+	}
+
+	records, err := h.db.ExecuteRead(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Essay not found"})
+		return
+	}
+
+	record := records[0]
+	updatedEssay := models.Essay{
+		ID:      record["e.id"].(string),
+		Title:   record["e.title"].(string),
+		Content: record["e.content"].(string),
+	}
+
+	if createdAtStr := getStringValue(record, "e.created_at"); createdAtStr != "" {
+		if createdAt, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
+			updatedEssay.CreatedAt = createdAt
+		}
+	}
+
+	c.JSON(http.StatusOK, updatedEssay)
+}
+
+func (h *Handler) DeleteEssay(c *gin.Context) {
+	id := c.Param("id")
+
+	// First check if essay exists
+	checkQuery := `MATCH (e:Essay {id: $id}) RETURN e.id`
+	checkParams := map[string]interface{}{"id": id}
+
+	records, err := h.db.ExecuteRead(context.Background(), checkQuery, checkParams)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Essay not found"})
+		return
+	}
+
+	// Delete essay and all its relationships
+	deleteQuery := `MATCH (e:Essay {id: $id}) DETACH DELETE e`
+	deleteParams := map[string]interface{}{"id": id}
+
+	_, err = h.db.ExecuteQuery(context.Background(), deleteQuery, deleteParams)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Essay deleted successfully"})
+}
+
 // POINTS_TO relationship handler
 func (h *Handler) CreatePointsTo(c *gin.Context) {
 	var rel models.Relationship
@@ -363,6 +516,77 @@ func (h *Handler) GetClaims(c *gin.Context) {
 	c.JSON(http.StatusOK, claims)
 }
 
+func (h *Handler) UpdateClaim(c *gin.Context) {
+	id := c.Param("id")
+	var claim models.Claim
+	if err := c.ShouldBindJSON(&claim); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	query := `MATCH (cl:Claim {id: $id})
+			  SET cl.text = $text, cl.confidence_score = $confidence_score, cl.is_verified = $is_verified
+			  RETURN cl.id, cl.text, cl.confidence_score, cl.is_verified`
+	params := map[string]interface{}{
+		"id":               id,
+		"text":             claim.Text,
+		"confidence_score": claim.ConfidenceScore,
+		"is_verified":      claim.IsVerified,
+	}
+
+	records, err := h.db.ExecuteRead(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Claim not found"})
+		return
+	}
+
+	record := records[0]
+	updatedClaim := models.Claim{
+		ID:              record["cl.id"].(string),
+		Text:            record["cl.text"].(string),
+		ConfidenceScore: getIntValue(record, "cl.confidence_score"),
+		IsVerified:      getBoolValue(record, "cl.is_verified"),
+	}
+
+	c.JSON(http.StatusOK, updatedClaim)
+}
+
+func (h *Handler) DeleteClaim(c *gin.Context) {
+	id := c.Param("id")
+
+	// First check if claim exists
+	checkQuery := `MATCH (cl:Claim {id: $id}) RETURN cl.id`
+	checkParams := map[string]interface{}{"id": id}
+
+	records, err := h.db.ExecuteRead(context.Background(), checkQuery, checkParams)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Claim not found"})
+		return
+	}
+
+	// Delete claim and all its relationships
+	deleteQuery := `MATCH (cl:Claim {id: $id}) DETACH DELETE cl`
+	deleteParams := map[string]interface{}{"id": id}
+
+	_, err = h.db.ExecuteQuery(context.Background(), deleteQuery, deleteParams)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Claim deleted successfully"})
+}
+
 // Source handlers
 func (h *Handler) CreateSource(c *gin.Context) {
 	var source models.Source
@@ -458,6 +682,85 @@ func (h *Handler) GetSources(c *gin.Context) {
 	c.JSON(http.StatusOK, sources)
 }
 
+func (h *Handler) UpdateSource(c *gin.Context) {
+	id := c.Param("id")
+	var source models.Source
+	if err := c.ShouldBindJSON(&source); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	query := `MATCH (s:Source {id: $id})
+			  SET s.type = $type, s.title = $title, s.author = $author, s.url = $url
+			  RETURN s.id, s.type, s.title, s.author, s.url, s.date_added`
+	params := map[string]interface{}{
+		"id":     id,
+		"type":   source.Type,
+		"title":  source.Title,
+		"author": source.Author,
+		"url":    source.URL,
+	}
+
+	records, err := h.db.ExecuteRead(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Source not found"})
+		return
+	}
+
+	record := records[0]
+	updatedSource := models.Source{
+		ID:     record["s.id"].(string),
+		Type:   record["s.type"].(string),
+		Title:  record["s.title"].(string),
+		Author: getStringValue(record, "s.author"),
+		URL:    getStringValue(record, "s.url"),
+	}
+
+	if dateStr := getStringValue(record, "s.date_added"); dateStr != "" {
+		if dateAdded, err := time.Parse(time.RFC3339, dateStr); err == nil {
+			updatedSource.DateAdded = dateAdded
+		}
+	}
+
+	c.JSON(http.StatusOK, updatedSource)
+}
+
+func (h *Handler) DeleteSource(c *gin.Context) {
+	id := c.Param("id")
+
+	// First check if source exists
+	checkQuery := `MATCH (s:Source {id: $id}) RETURN s.id`
+	checkParams := map[string]interface{}{"id": id}
+
+	records, err := h.db.ExecuteRead(context.Background(), checkQuery, checkParams)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Source not found"})
+		return
+	}
+
+	// Delete source and all its relationships
+	deleteQuery := `MATCH (s:Source {id: $id}) DETACH DELETE s`
+	deleteParams := map[string]interface{}{"id": id}
+
+	_, err = h.db.ExecuteQuery(context.Background(), deleteQuery, deleteParams)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Source deleted successfully"})
+}
+
 // Question handlers
 func (h *Handler) CreateQuestion(c *gin.Context) {
 	var question models.Question
@@ -533,6 +836,77 @@ func (h *Handler) GetQuestions(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, questions)
+}
+
+func (h *Handler) UpdateQuestion(c *gin.Context) {
+	id := c.Param("id")
+	var question models.Question
+	if err := c.ShouldBindJSON(&question); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	query := `MATCH (q:Question {id: $id})
+			  SET q.text = $text, q.priority = $priority, q.status = $status
+			  RETURN q.id, q.text, q.priority, q.status`
+	params := map[string]interface{}{
+		"id":       id,
+		"text":     question.Text,
+		"priority": question.Priority,
+		"status":   question.Status,
+	}
+
+	records, err := h.db.ExecuteRead(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Question not found"})
+		return
+	}
+
+	record := records[0]
+	updatedQuestion := models.Question{
+		ID:       record["q.id"].(string),
+		Text:     record["q.text"].(string),
+		Priority: getIntValue(record, "q.priority"),
+		Status:   getStringValue(record, "q.status"),
+	}
+
+	c.JSON(http.StatusOK, updatedQuestion)
+}
+
+func (h *Handler) DeleteQuestion(c *gin.Context) {
+	id := c.Param("id")
+
+	// First check if question exists
+	checkQuery := `MATCH (q:Question {id: $id}) RETURN q.id`
+	checkParams := map[string]interface{}{"id": id}
+
+	records, err := h.db.ExecuteRead(context.Background(), checkQuery, checkParams)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Question not found"})
+		return
+	}
+
+	// Delete question and all its relationships
+	deleteQuery := `MATCH (q:Question {id: $id}) DETACH DELETE q`
+	deleteParams := map[string]interface{}{"id": id}
+
+	_, err = h.db.ExecuteQuery(context.Background(), deleteQuery, deleteParams)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Question deleted successfully"})
 }
 
 // Relationship handlers for schema relationships
