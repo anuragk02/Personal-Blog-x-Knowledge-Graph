@@ -87,6 +87,13 @@ func main() {
 		api.POST("/contradicts", h.CreateContradicts)
 		api.POST("/derived-from", h.CreateDerivedFrom)
 		api.POST("/raises", h.CreateRaises)
+
+		// Analytical endpoints for agentic systems
+		api.GET("/search", h.SearchKnowledge)
+		api.GET("/stats", h.GetKnowledgeStats)
+		api.GET("/path", h.FindPath)
+		api.GET("/neighborhood/:id", h.GetNodeNeighborhood)
+		api.GET("/insights", h.GetKnowledgeInsights)
 	}
 
 	port := os.Getenv("PORT")

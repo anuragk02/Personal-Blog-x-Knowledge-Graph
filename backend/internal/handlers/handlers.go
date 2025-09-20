@@ -985,3 +985,224 @@ func (h *Handler) createRelationship(c *gin.Context, relType string) {
 
 	c.JSON(http.StatusCreated, gin.H{"message": relType + " relationship created", "from": rel.From, "to": rel.To})
 }
+
+// ======================
+// ANALYTICAL ENDPOINTS FOR AGENTIC SYSTEMS
+// ======================
+
+// Search across all node types
+func (h *Handler) SearchKnowledge(c *gin.Context) {
+	searchTerm := c.Query("q")
+	if searchTerm == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Search term 'q' is required"})
+		return
+	}
+
+	query := `
+		MATCH (n) 
+		WHERE n.name CONTAINS $term 
+		   OR n.title CONTAINS $term 
+		   OR n.text CONTAINS $term 
+		   OR n.content CONTAINS $term
+		   OR n.summary CONTAINS $term
+		RETURN labels(n)[0] as type, n.id as id, 
+		       COALESCE(n.name, n.title, n.text, 'Unknown') as title,
+		       COALESCE(n.summary, n.content, '') as content
+		LIMIT 50`
+	params := map[string]interface{}{"term": searchTerm}
+
+	records, err := h.db.ExecuteRead(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var results []map[string]interface{}
+	for _, record := range records {
+		results = append(results, map[string]interface{}{
+			"type":    record["type"],
+			"id":      record["id"],
+			"title":   record["title"],
+			"content": record["content"],
+		})
+	}
+
+	// Ensure results is never null in JSON response
+	if results == nil {
+		results = []map[string]interface{}{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"results": results, "count": len(results)})
+}
+
+// Get knowledge graph statistics
+func (h *Handler) GetKnowledgeStats(c *gin.Context) {
+	statsQuery := `
+		MATCH (n) 
+		WITH labels(n)[0] as nodeType, count(n) as nodeCount
+		RETURN nodeType, nodeCount
+		UNION ALL
+		MATCH ()-[r]->()
+		WITH type(r) as relType, count(r) as relCount
+		RETURN relType as nodeType, relCount as nodeCount`
+
+	records, err := h.db.ExecuteRead(context.Background(), statsQuery, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	stats := map[string]interface{}{
+		"nodes":         make(map[string]interface{}),
+		"relationships": make(map[string]interface{}),
+	}
+
+	for _, record := range records {
+		nodeType := record["nodeType"].(string)
+		count := record["nodeCount"]
+
+		// Distinguish between node types and relationship types
+		if nodeType == "Concept" || nodeType == "Essay" || nodeType == "Claim" || nodeType == "Source" || nodeType == "Question" {
+			stats["nodes"].(map[string]interface{})[nodeType] = count
+		} else {
+			stats["relationships"].(map[string]interface{})[nodeType] = count
+		}
+	}
+
+	c.JSON(http.StatusOK, stats)
+}
+
+// Find paths between two nodes
+func (h *Handler) FindPath(c *gin.Context) {
+	fromId := c.Query("from")
+	toId := c.Query("to")
+	maxDepth := c.DefaultQuery("depth", "3")
+
+	if fromId == "" || toId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Both 'from' and 'to' parameters are required"})
+		return
+	}
+
+	query := `
+		MATCH path = shortestPath((from {id: $from})-[*1..` + maxDepth + `]-(to {id: $to}))
+		RETURN [node in nodes(path) | {id: node.id, type: labels(node)[0], name: COALESCE(node.name, node.title, node.text)}] as nodes,
+		       [rel in relationships(path) | type(rel)] as relationships,
+		       length(path) as pathLength`
+	params := map[string]interface{}{
+		"from": fromId,
+		"to":   toId,
+	}
+
+	records, err := h.db.ExecuteRead(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusOK, gin.H{"path": nil, "message": "No path found"})
+		return
+	}
+
+	record := records[0]
+	c.JSON(http.StatusOK, gin.H{
+		"nodes":         record["nodes"],
+		"relationships": record["relationships"],
+		"pathLength":    record["pathLength"],
+	})
+}
+
+// Get node with its immediate neighborhood
+func (h *Handler) GetNodeNeighborhood(c *gin.Context) {
+	nodeId := c.Param("id")
+	depth := c.DefaultQuery("depth", "1")
+
+	query := `
+		MATCH (center {id: $nodeId})
+		OPTIONAL MATCH path = (center)-[*1..` + depth + `]-(neighbor)
+		WITH center, collect(DISTINCT neighbor) as neighbors, 
+		     collect(DISTINCT [rel in relationships(path) | {type: type(rel), from: startNode(rel).id, to: endNode(rel).id}]) as pathRels
+		RETURN {
+			id: center.id, 
+			type: labels(center)[0], 
+			name: COALESCE(center.name, center.title, center.text),
+			properties: properties(center)
+		} as centerNode,
+		[n in neighbors | {
+			id: n.id, 
+			type: labels(n)[0], 
+			name: COALESCE(n.name, n.title, n.text)
+		}] as neighbors,
+		REDUCE(rels = [], relList in pathRels | rels + relList) as relationships`
+	params := map[string]interface{}{"nodeId": nodeId}
+
+	records, err := h.db.ExecuteRead(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Node not found"})
+		return
+	}
+
+	record := records[0]
+	c.JSON(http.StatusOK, gin.H{
+		"center":        record["centerNode"],
+		"neighbors":     record["neighbors"],
+		"relationships": record["relationships"],
+	})
+}
+
+// Discover patterns and insights
+func (h *Handler) GetKnowledgeInsights(c *gin.Context) {
+	insights := make(map[string]interface{})
+
+	// Most connected concepts
+	connectedQuery := `
+		MATCH (c:Concept)-[r]-()
+		WITH c, count(r) as connections
+		ORDER BY connections DESC
+		LIMIT 5
+		RETURN collect({id: c.id, name: c.name, connections: connections}) as mostConnected`
+
+	records, err := h.db.ExecuteRead(context.Background(), connectedQuery, nil)
+	if err == nil && len(records) > 0 {
+		insights["mostConnectedConcepts"] = records[0]["mostConnected"]
+	}
+
+	// Unverified claims
+	unverifiedQuery := `
+		MATCH (cl:Claim {is_verified: false})
+		RETURN count(cl) as unverifiedCount`
+
+	records, err = h.db.ExecuteRead(context.Background(), unverifiedQuery, nil)
+	if err == nil && len(records) > 0 {
+		insights["unverifiedClaims"] = records[0]["unverifiedCount"]
+	}
+
+	// Open questions
+	openQuestionsQuery := `
+		MATCH (q:Question)
+		WHERE q.status = 'open' OR q.status = ''
+		RETURN count(q) as openQuestions`
+
+	records, err = h.db.ExecuteRead(context.Background(), openQuestionsQuery, nil)
+	if err == nil && len(records) > 0 {
+		insights["openQuestions"] = records[0]["openQuestions"]
+	}
+
+	// Knowledge gaps (concepts without sources)
+	gapsQuery := `
+		MATCH (c:Concept)
+		WHERE NOT (c)-[:DERIVED_FROM]->(:Source)
+		RETURN count(c) as conceptsWithoutSources`
+
+	records, err = h.db.ExecuteRead(context.Background(), gapsQuery, nil)
+	if err == nil && len(records) > 0 {
+		insights["conceptsWithoutSources"] = records[0]["conceptsWithoutSources"]
+	}
+
+	c.JSON(http.StatusOK, insights)
+}
