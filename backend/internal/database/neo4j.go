@@ -46,3 +46,25 @@ func (db *DB) ExecuteQuery(ctx context.Context, query string, params map[string]
 
 	return session.Run(ctx, query, params)
 }
+
+func (db *DB) ExecuteRead(ctx context.Context, query string, params map[string]interface{}) ([]map[string]interface{}, error) {
+	session := db.driver.NewSession(ctx, neo4j.SessionConfig{})
+	defer session.Close(ctx)
+
+	result, err := session.Run(ctx, query, params)
+	if err != nil {
+		return nil, err
+	}
+
+	var records []map[string]interface{}
+	for result.Next(ctx) {
+		record := result.Record()
+		recordMap := make(map[string]interface{})
+		for i, key := range record.Keys {
+			recordMap[key] = record.Values[i]
+		}
+		records = append(records, recordMap)
+	}
+
+	return records, result.Err()
+}

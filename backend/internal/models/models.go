@@ -33,9 +33,16 @@ type Question struct {
 	Status   string `json:"status"` // open, answered
 }
 
+type Essay struct {
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Relationship struct {
 	From string                 `json:"from"`
 	To   string                 `json:"to"`
-	Type string                 `json:"type"`           // DEFINES, INFLUENCES, SUPPORTS, CONTRADICTS, DERIVED_FROM, RAISES
+	Type string                 `json:"type"`           // DEFINES, INFLUENCES, SUPPORTS, CONTRADICTS, DERIVED_FROM, RAISES, POINTS_TO
 	Data map[string]interface{} `json:"data,omitempty"` // polarity for INFLUENCES, etc.
 }

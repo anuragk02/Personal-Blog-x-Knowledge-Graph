@@ -46,6 +46,14 @@ func main() {
 		api.GET("/concepts/:id", h.GetConcept)
 		api.POST("/relationships", h.CreateRelationship)
 		api.GET("/connections", h.GetConnections)
+
+		// Essay routes
+		api.POST("/essays", h.CreateEssay)
+		api.GET("/essays", h.GetEssays)
+		api.GET("/essays/:id", h.GetEssay)
+
+		// POINTS_TO relationship
+		api.POST("/points-to", h.CreatePointsTo)
 	}
 
 	port := os.Getenv("PORT")
