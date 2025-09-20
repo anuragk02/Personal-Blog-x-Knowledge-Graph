@@ -41,6 +41,15 @@ func getIntValue(record map[string]interface{}, key string) int {
 	return 0
 }
 
+func getBoolValue(record map[string]interface{}, key string) bool {
+	if val, ok := record[key]; ok && val != nil {
+		if b, ok := val.(bool); ok {
+			return b
+		}
+	}
+	return false
+}
+
 // Node CRUD operations
 func (h *Handler) CreateConcept(c *gin.Context) {
 	var concept models.Concept
@@ -92,6 +101,29 @@ func (h *Handler) GetConcept(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, concept)
+}
+
+func (h *Handler) GetConcepts(c *gin.Context) {
+	query := `MATCH (c:Concept) RETURN c.id, c.name, c.summary, c.mastery_level`
+
+	records, err := h.db.ExecuteRead(context.Background(), query, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var concepts []models.Concept
+	for _, record := range records {
+		concept := models.Concept{
+			ID:           record["c.id"].(string),
+			Name:         record["c.name"].(string),
+			Summary:      getStringValue(record, "c.summary"),
+			MasteryLevel: getIntValue(record, "c.mastery_level"),
+		}
+		concepts = append(concepts, concept)
+	}
+
+	c.JSON(http.StatusOK, concepts)
 }
 
 // Relationship operations
@@ -252,4 +284,330 @@ func (h *Handler) CreatePointsTo(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"message": "POINTS_TO relationship created", "from": rel.From, "to": rel.To})
+}
+
+// Claim handlers
+func (h *Handler) CreateClaim(c *gin.Context) {
+	var claim models.Claim
+	if err := c.ShouldBindJSON(&claim); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	claim.ID = fmt.Sprintf("claim_%d", time.Now().Unix())
+
+	query := `CREATE (cl:Claim {id: $id, text: $text, confidence_score: $confidence_score, is_verified: $is_verified})`
+	params := map[string]interface{}{
+		"id":               claim.ID,
+		"text":             claim.Text,
+		"confidence_score": claim.ConfidenceScore,
+		"is_verified":      claim.IsVerified,
+	}
+
+	_, err := h.db.ExecuteQuery(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, claim)
+}
+
+func (h *Handler) GetClaim(c *gin.Context) {
+	id := c.Param("id")
+	query := `MATCH (cl:Claim {id: $id}) RETURN cl.id, cl.text, cl.confidence_score, cl.is_verified`
+	params := map[string]interface{}{"id": id}
+
+	records, err := h.db.ExecuteRead(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Claim not found"})
+		return
+	}
+
+	record := records[0]
+	claim := models.Claim{
+		ID:              record["cl.id"].(string),
+		Text:            record["cl.text"].(string),
+		ConfidenceScore: getIntValue(record, "cl.confidence_score"),
+		IsVerified:      getBoolValue(record, "cl.is_verified"),
+	}
+
+	c.JSON(http.StatusOK, claim)
+}
+
+func (h *Handler) GetClaims(c *gin.Context) {
+	query := `MATCH (cl:Claim) RETURN cl.id, cl.text, cl.confidence_score, cl.is_verified`
+
+	records, err := h.db.ExecuteRead(context.Background(), query, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var claims []models.Claim
+	for _, record := range records {
+		claim := models.Claim{
+			ID:              record["cl.id"].(string),
+			Text:            record["cl.text"].(string),
+			ConfidenceScore: getIntValue(record, "cl.confidence_score"),
+			IsVerified:      getBoolValue(record, "cl.is_verified"),
+		}
+		claims = append(claims, claim)
+	}
+
+	c.JSON(http.StatusOK, claims)
+}
+
+// Source handlers
+func (h *Handler) CreateSource(c *gin.Context) {
+	var source models.Source
+	if err := c.ShouldBindJSON(&source); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	source.ID = fmt.Sprintf("source_%d", time.Now().Unix())
+	source.DateAdded = time.Now()
+
+	query := `CREATE (s:Source {id: $id, type: $type, title: $title, author: $author, url: $url, date_added: $date_added})`
+	params := map[string]interface{}{
+		"id":         source.ID,
+		"type":       source.Type,
+		"title":      source.Title,
+		"author":     source.Author,
+		"url":        source.URL,
+		"date_added": source.DateAdded.Format(time.RFC3339),
+	}
+
+	_, err := h.db.ExecuteQuery(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, source)
+}
+
+func (h *Handler) GetSource(c *gin.Context) {
+	id := c.Param("id")
+	query := `MATCH (s:Source {id: $id}) RETURN s.id, s.type, s.title, s.author, s.url, s.date_added`
+	params := map[string]interface{}{"id": id}
+
+	records, err := h.db.ExecuteRead(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Source not found"})
+		return
+	}
+
+	record := records[0]
+	source := models.Source{
+		ID:     record["s.id"].(string),
+		Type:   record["s.type"].(string),
+		Title:  record["s.title"].(string),
+		Author: getStringValue(record, "s.author"),
+		URL:    getStringValue(record, "s.url"),
+	}
+
+	if dateStr := getStringValue(record, "s.date_added"); dateStr != "" {
+		if dateAdded, err := time.Parse(time.RFC3339, dateStr); err == nil {
+			source.DateAdded = dateAdded
+		}
+	}
+
+	c.JSON(http.StatusOK, source)
+}
+
+func (h *Handler) GetSources(c *gin.Context) {
+	query := `MATCH (s:Source) RETURN s.id, s.type, s.title, s.author, s.url, s.date_added`
+
+	records, err := h.db.ExecuteRead(context.Background(), query, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var sources []models.Source
+	for _, record := range records {
+		source := models.Source{
+			ID:     record["s.id"].(string),
+			Type:   record["s.type"].(string),
+			Title:  record["s.title"].(string),
+			Author: getStringValue(record, "s.author"),
+			URL:    getStringValue(record, "s.url"),
+		}
+
+		if dateStr := getStringValue(record, "s.date_added"); dateStr != "" {
+			if dateAdded, err := time.Parse(time.RFC3339, dateStr); err == nil {
+				source.DateAdded = dateAdded
+			}
+		}
+
+		sources = append(sources, source)
+	}
+
+	c.JSON(http.StatusOK, sources)
+}
+
+// Question handlers
+func (h *Handler) CreateQuestion(c *gin.Context) {
+	var question models.Question
+	if err := c.ShouldBindJSON(&question); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	question.ID = fmt.Sprintf("question_%d", time.Now().Unix())
+
+	query := `CREATE (q:Question {id: $id, text: $text, priority: $priority, status: $status})`
+	params := map[string]interface{}{
+		"id":       question.ID,
+		"text":     question.Text,
+		"priority": question.Priority,
+		"status":   question.Status,
+	}
+
+	_, err := h.db.ExecuteQuery(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, question)
+}
+
+func (h *Handler) GetQuestion(c *gin.Context) {
+	id := c.Param("id")
+	query := `MATCH (q:Question {id: $id}) RETURN q.id, q.text, q.priority, q.status`
+	params := map[string]interface{}{"id": id}
+
+	records, err := h.db.ExecuteRead(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(records) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Question not found"})
+		return
+	}
+
+	record := records[0]
+	question := models.Question{
+		ID:       record["q.id"].(string),
+		Text:     record["q.text"].(string),
+		Priority: getIntValue(record, "q.priority"),
+		Status:   getStringValue(record, "q.status"),
+	}
+
+	c.JSON(http.StatusOK, question)
+}
+
+func (h *Handler) GetQuestions(c *gin.Context) {
+	query := `MATCH (q:Question) RETURN q.id, q.text, q.priority, q.status`
+
+	records, err := h.db.ExecuteRead(context.Background(), query, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var questions []models.Question
+	for _, record := range records {
+		question := models.Question{
+			ID:       record["q.id"].(string),
+			Text:     record["q.text"].(string),
+			Priority: getIntValue(record, "q.priority"),
+			Status:   getStringValue(record, "q.status"),
+		}
+		questions = append(questions, question)
+	}
+
+	c.JSON(http.StatusOK, questions)
+}
+
+// Relationship handlers for schema relationships
+func (h *Handler) CreateDefines(c *gin.Context) {
+	h.createRelationship(c, "DEFINES")
+}
+
+func (h *Handler) CreateInfluences(c *gin.Context) {
+	var rel models.Relationship
+	if err := c.ShouldBindJSON(&rel); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// INFLUENCES relationship needs polarity property
+	polarity := "positive" // default
+	if rel.Data != nil && rel.Data["polarity"] != nil {
+		polarity = rel.Data["polarity"].(string)
+	}
+
+	query := `MATCH (from), (to) 
+			  WHERE from.id = $from AND to.id = $to 
+			  CREATE (from)-[:INFLUENCES {polarity: $polarity}]->(to)`
+	params := map[string]interface{}{
+		"from":     rel.From,
+		"to":       rel.To,
+		"polarity": polarity,
+	}
+
+	_, err := h.db.ExecuteQuery(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "INFLUENCES relationship created", "from": rel.From, "to": rel.To, "polarity": polarity})
+}
+
+func (h *Handler) CreateSupports(c *gin.Context) {
+	h.createRelationship(c, "SUPPORTS")
+}
+
+func (h *Handler) CreateContradicts(c *gin.Context) {
+	h.createRelationship(c, "CONTRADICTS")
+}
+
+func (h *Handler) CreateDerivedFrom(c *gin.Context) {
+	h.createRelationship(c, "DERIVED_FROM")
+}
+
+func (h *Handler) CreateRaises(c *gin.Context) {
+	h.createRelationship(c, "RAISES")
+}
+
+// Generic relationship creator
+func (h *Handler) createRelationship(c *gin.Context, relType string) {
+	var rel models.Relationship
+	if err := c.ShouldBindJSON(&rel); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	query := `MATCH (from), (to) 
+			  WHERE from.id = $from AND to.id = $to 
+			  CREATE (from)-[:` + relType + `]->(to)`
+	params := map[string]interface{}{
+		"from": rel.From,
+		"to":   rel.To,
+	}
+
+	_, err := h.db.ExecuteQuery(context.Background(), query, params)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": relType + " relationship created", "from": rel.From, "to": rel.To})
 }

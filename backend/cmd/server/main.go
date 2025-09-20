@@ -42,18 +42,41 @@ func main() {
 	// API routes
 	api := r.Group("/api/v1")
 	{
+		// Concept routes
 		api.POST("/concepts", h.CreateConcept)
+		api.GET("/concepts", h.GetConcepts)
 		api.GET("/concepts/:id", h.GetConcept)
-		api.POST("/relationships", h.CreateRelationship)
-		api.GET("/connections", h.GetConnections)
 
 		// Essay routes
 		api.POST("/essays", h.CreateEssay)
 		api.GET("/essays", h.GetEssays)
 		api.GET("/essays/:id", h.GetEssay)
 
-		// POINTS_TO relationship
+		// Claim routes
+		api.POST("/claims", h.CreateClaim)
+		api.GET("/claims", h.GetClaims)
+		api.GET("/claims/:id", h.GetClaim)
+
+		// Source routes
+		api.POST("/sources", h.CreateSource)
+		api.GET("/sources", h.GetSources)
+		api.GET("/sources/:id", h.GetSource)
+
+		// Question routes
+		api.POST("/questions", h.CreateQuestion)
+		api.GET("/questions", h.GetQuestions)
+		api.GET("/questions/:id", h.GetQuestion)
+
+		// Relationship routes
+		api.POST("/relationships", h.CreateRelationship)
+		api.GET("/connections", h.GetConnections)
 		api.POST("/points-to", h.CreatePointsTo)
+		api.POST("/defines", h.CreateDefines)
+		api.POST("/influences", h.CreateInfluences)
+		api.POST("/supports", h.CreateSupports)
+		api.POST("/contradicts", h.CreateContradicts)
+		api.POST("/derived-from", h.CreateDerivedFrom)
+		api.POST("/raises", h.CreateRaises)
 	}
 
 	port := os.Getenv("PORT")
