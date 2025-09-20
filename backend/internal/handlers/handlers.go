@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/anuragk02/jna-nuh-yoh-guh/internal/database"
 	"github.com/anuragk02/jna-nuh-yoh-guh/internal/models"
@@ -25,27 +27,21 @@ func (h *Handler) CreateConcept(c *gin.Context) {
 		return
 	}
 
-	query := `CREATE (c:Concept {name: $name, summary: $summary, mastery_level: $mastery_level}) RETURN elementId(c) as id`
+	// Generate a simple ID
+	concept.ID = fmt.Sprintf("concept_%d", time.Now().Unix())
+
+	query := `CREATE (c:Concept {id: $id, name: $name}) RETURN c.id as id`
 	params := map[string]interface{}{
-		"name":          concept.Name,
-		"summary":       concept.Summary,
-		"mastery_level": concept.MasteryLevel,
+		"id":   concept.ID,
+		"name": concept.Name,
 	}
 
-	result, err := h.db.ExecuteQuery(context.Background(), query, params)
+	_, err := h.db.ExecuteQuery(context.Background(), query, params)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	record, err := result.Single(context.Background())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	id, _ := record.Get("id")
-	concept.ID = id.(string)
 	c.JSON(http.StatusCreated, concept)
 }
 

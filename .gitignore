@@ -1,0 +1,17 @@
+# Local development data
+data/
+
+# Go build artifacts
+backend/tmp/
+backend/build-errors.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+.env
