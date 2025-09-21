@@ -263,14 +263,17 @@ func (h *Handler) CreateEssay(c *gin.Context) {
 
 	// Generate ID and set creation time
 	essay.ID = fmt.Sprintf("essay_%d", time.Now().Unix())
-	essay.CreatedAt = time.Now()
+	now := time.Now()
+	essay.CreatedAt = now
+	essay.UpdatedAt = now
 
-	query := `CREATE (e:Essay {id: $id, title: $title, content: $content, created_at: $created_at})`
+	query := `CREATE (e:Essay {id: $id, title: $title, content: $content, created_at: $created_at, updated_at: $updated_at})`
 	params := map[string]interface{}{
 		"id":         essay.ID,
 		"title":      essay.Title,
 		"content":    essay.Content,
 		"created_at": essay.CreatedAt.Format(time.RFC3339),
+		"updated_at": essay.UpdatedAt.Format(time.RFC3339),
 	}
 
 	_, err := h.db.ExecuteQuery(context.Background(), query, params)
@@ -284,7 +287,7 @@ func (h *Handler) CreateEssay(c *gin.Context) {
 
 func (h *Handler) GetEssay(c *gin.Context) {
 	id := c.Param("id")
-	query := `MATCH (e:Essay {id: $id}) RETURN e.id, e.title, e.content, e.created_at`
+	query := `MATCH (e:Essay {id: $id}) RETURN e.id, e.title, e.content, e.created_at, e.updated_at`
 	params := map[string]interface{}{"id": id}
 
 	records, err := h.db.ExecuteRead(context.Background(), query, params)
@@ -312,11 +315,18 @@ func (h *Handler) GetEssay(c *gin.Context) {
 		}
 	}
 
+	// Handle updated_at parsing
+	if updatedAtStr := getStringValue(record, "e.updated_at"); updatedAtStr != "" {
+		if updatedAt, err := time.Parse(time.RFC3339, updatedAtStr); err == nil {
+			essay.UpdatedAt = updatedAt
+		}
+	}
+
 	c.JSON(http.StatusOK, essay)
 }
 
 func (h *Handler) GetEssays(c *gin.Context) {
-	query := `MATCH (e:Essay) RETURN e.id, e.title, e.created_at ORDER BY e.created_at DESC`
+	query := `MATCH (e:Essay) RETURN e.id, e.title, e.created_at, e.updated_at ORDER BY e.updated_at DESC`
 
 	records, err := h.db.ExecuteRead(context.Background(), query, nil)
 	if err != nil {
@@ -330,6 +340,7 @@ func (h *Handler) GetEssays(c *gin.Context) {
 			"id":         record["e.id"],
 			"title":      record["e.title"],
 			"created_at": record["e.created_at"],
+			"updated_at": record["e.updated_at"],
 		})
 	}
 
@@ -344,13 +355,17 @@ func (h *Handler) UpdateEssay(c *gin.Context) {
 		return
 	}
 
+	// Set updated timestamp
+	updatedAt := time.Now()
+
 	query := `MATCH (e:Essay {id: $id})
-			  SET e.title = $title, e.content = $content
-			  RETURN e.id, e.title, e.content, e.created_at`
+			  SET e.title = $title, e.content = $content, e.updated_at = $updated_at
+			  RETURN e.id, e.title, e.content, e.created_at, e.updated_at`
 	params := map[string]interface{}{
-		"id":      id,
-		"title":   essay.Title,
-		"content": essay.Content,
+		"id":         id,
+		"title":      essay.Title,
+		"content":    essay.Content,
+		"updated_at": updatedAt.Format(time.RFC3339),
 	}
 
 	records, err := h.db.ExecuteRead(context.Background(), query, params)
@@ -366,9 +381,10 @@ func (h *Handler) UpdateEssay(c *gin.Context) {
 
 	record := records[0]
 	updatedEssay := models.Essay{
-		ID:      record["e.id"].(string),
-		Title:   record["e.title"].(string),
-		Content: record["e.content"].(string),
+		ID:        record["e.id"].(string),
+		Title:     record["e.title"].(string),
+		Content:   record["e.content"].(string),
+		UpdatedAt: updatedAt,
 	}
 
 	if createdAtStr := getStringValue(record, "e.created_at"); createdAtStr != "" {

@@ -26,6 +26,7 @@ Essay,ID,string,id,Auto-generated,Unique identifier for the essay,Auto-generated
 Essay,Title,string,title,No validation,Title of the essay,Can be empty string,Understanding Complex Systems,Always present
 Essay,Content,string,content,No validation,Full text content of the essay,Can be empty string,This essay explores...,Always present
 Essay,CreatedAt,time.Time,created_at,Auto-generated,Creation timestamp,Auto-generated ISO 8601,2025-09-20T21:15:46Z,Always present
+Essay,UpdatedAt,time.Time,updated_at,Auto-generated,Last modification timestamp,Auto-generated ISO 8601 | omitempty,2025-09-20T22:30:15Z,Excluded if zero time
 
 Relationship,From,string,from,No validation,Source node ID,Should reference existing node,concept_1758402946,Always present
 Relationship,To,string,to,No validation,Target node ID,Should reference existing node,source_1758402946,Always present
