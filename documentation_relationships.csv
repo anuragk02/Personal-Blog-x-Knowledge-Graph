@@ -1,8 +1,0 @@
-Relationship Type,Description,Valid From Nodes,Valid To Nodes,Additional Properties,Use Case,Example
-DEFINES,One concept defines another concept,Concept,Concept,definition: string,When a concept provides the definition for another concept,Advanced System Dynamics DEFINES System Dynamics
-INFLUENCES,One concept influences another concept,Concept,Concept,strength: int (0-10) | polarity: positive/negative,When concepts have causal or influential relationships,Economic Theory INFLUENCES Policy Making
-SUPPORTS,Evidence that supports a claim,Source OR Claim,Claim,strength: int (0-10),When sources or other claims provide evidence for a claim,Research Paper SUPPORTS Climate Change Claim
-CONTRADICTS,Evidence that contradicts a claim,Claim,Claim,strength: int (0-10),When one claim contradicts another claim,New Study CONTRADICTS Previous Theory
-DERIVED_FROM,Knowledge derived from a source,Concept,Source,none,When a concept is derived from a particular source,Machine Learning DERIVED_FROM AI Textbook
-RAISES,A question raises or is about a concept,Question,Concept,none,When a question is related to or raises issues about a concept,Research Question RAISES System Theory
-POINTS_TO,Essays that reference or discuss nodes,Essay,Any Node Type,none,When essays discuss or reference concepts/claims/sources/questions,Essay POINTS_TO Central Concept

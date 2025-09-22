@@ -1,0 +1,54 @@
+Method,Endpoint Path,Handler Function,Request Body Type,Response Type,Status Codes,Description,Example Request,Example Response,Notes
+POST,/narratives,CreateNarrative,Narrative JSON,Narrative JSON,201 | 400 | 500,Create a new narrative,"{""title"": ""Understanding Traffic Flow"", ""content"": ""This narrative explores...""}","{""id"": ""narrative_1758576819"", ""title"": ""Understanding Traffic Flow"", ...}",ID field auto-generated
+GET,/narratives,GetNarratives,None,Array of Narrative JSON,200 | 500,Get all narratives,None,"[{""id"": ""narrative_1758576819"", ""title"": ""Understanding Traffic Flow"", ...}]",Returns array even if empty
+GET,/narratives/:id,GetNarrative,None,Narrative JSON,200 | 404 | 500,Get specific narrative by ID,None,"{""id"": ""narrative_1758576819"", ""title"": ""Understanding Traffic Flow"", ...}",404 if not found
+PUT,/narratives/:id,UpdateNarrative,Narrative JSON,Narrative JSON,200 | 400 | 404 | 500,Update narrative by ID,"{""title"": ""Updated Title"", ""content"": ""Updated content""}","{""id"": ""narrative_1758576819"", ""title"": ""Updated Title"", ...}",Updates UpdatedAt timestamp
+DELETE,/narratives/:id,DeleteNarrative,None,Status message,200 | 404 | 500,Delete narrative by ID,None,"{""message"": ""Narrative deleted successfully""}",Also deletes related relationships
+
+POST,/systems,CreateSystem,System JSON,System JSON,201 | 400 | 500,Create a new system,"{""name"": ""Urban Traffic System"", ""boundary_description"": ""City roads...""}","{""id"": ""system_1758576829"", ""name"": ""Urban Traffic System"", ...}",ID field auto-generated
+GET,/systems,GetSystems,None,Array of System JSON,200 | 500,Get all systems,None,"[{""id"": ""system_1758576829"", ""name"": ""Urban Traffic System"", ...}]",Returns array even if empty
+GET,/systems/:id,GetSystem,None,System JSON,200 | 404 | 500,Get specific system by ID,None,"{""id"": ""system_1758576829"", ""name"": ""Urban Traffic System"", ...}",404 if not found
+PUT,/systems/:id,UpdateSystem,System JSON,System JSON,200 | 400 | 404 | 500,Update system by ID,"{""name"": ""Updated System Name"", ""type"": ""Transportation""}","{""id"": ""system_1758576829"", ""name"": ""Updated System Name"", ...}",Updates system properties
+DELETE,/systems/:id,DeleteSystem,None,Status message,200 | 404 | 500,Delete system by ID,None,"{""message"": ""System deleted successfully""}",Also deletes related relationships
+
+POST,/stocks,CreateStock,Stock JSON,Stock JSON,201 | 400 | 500,Create a new stock,"{""name"": ""Number of Cars on Road"", ""description"": ""The accumulation of vehicles...""}","{""id"": ""stock_1758576860"", ""name"": ""Number of Cars on Road"", ...}",ID field auto-generated
+GET,/stocks,GetStocks,None,Array of Stock JSON,200 | 500,Get all stocks,None,"[{""id"": ""stock_1758576860"", ""name"": ""Number of Cars on Road"", ...}]",Returns array even if empty
+GET,/stocks/:id,GetStock,None,Stock JSON,200 | 404 | 500,Get specific stock by ID,None,"{""id"": ""stock_1758576860"", ""name"": ""Number of Cars on Road"", ...}",404 if not found
+PUT,/stocks/:id,UpdateStock,Stock JSON,Stock JSON,200 | 400 | 404 | 500,Update stock by ID,"{""name"": ""Updated Stock Name"", ""description"": ""Updated description""}","{""id"": ""stock_1758576860"", ""name"": ""Updated Stock Name"", ...}",Updates stock properties
+DELETE,/stocks/:id,DeleteStock,None,Status message,200 | 404 | 500,Delete stock by ID,None,"{""message"": ""Stock deleted successfully""}",Also deletes related relationships
+
+POST,/flows,CreateFlow,Flow JSON,Flow JSON,201 | 400 | 500,Create a new flow,"{""name"": ""Cars Entering System"", ""description"": ""Rate at which vehicles enter...""}","{""id"": ""flow_1758576873"", ""name"": ""Cars Entering System"", ...}",ID field auto-generated
+GET,/flows,GetFlows,None,Array of Flow JSON,200 | 500,Get all flows,None,"[{""id"": ""flow_1758576873"", ""name"": ""Cars Entering System"", ...}]",Returns array even if empty
+GET,/flows/:id,GetFlow,None,Flow JSON,200 | 404 | 500,Get specific flow by ID,None,"{""id"": ""flow_1758576873"", ""name"": ""Cars Entering System"", ...}",404 if not found
+PUT,/flows/:id,UpdateFlow,Flow JSON,Flow JSON,200 | 400 | 404 | 500,Update flow by ID,"{""name"": ""Updated Flow Name"", ""description"": ""Updated description""}","{""id"": ""flow_1758576873"", ""name"": ""Updated Flow Name"", ...}",Updates flow properties
+DELETE,/flows/:id,DeleteFlow,None,Status message,200 | 404 | 500,Delete flow by ID,None,"{""message"": ""Flow deleted successfully""}",Also deletes related relationships
+
+POST,/questions,CreateQuestion,QuestionData JSON,QuestionData JSON,201 | 400 | 500,Create a new question,"{""content"": ""How does traffic light timing affect congestion?"", ""status"": ""unresolved"", ""type"": ""behavioral""}","{""id"": ""question_1758576900"", ""content"": ""How does traffic light timing..."", ...}",ID field auto-generated
+GET,/questions,GetQuestions,None,Array of QuestionData JSON,200 | 500,Get all questions,None,"[{""id"": ""question_1758576900"", ""content"": ""How does traffic light..."", ...}]",Returns array even if empty
+GET,/questions/:id,GetQuestion,None,QuestionData JSON,200 | 404 | 500,Get specific question by ID,None,"{""id"": ""question_1758576900"", ""content"": ""How does traffic light..."", ...}",404 if not found
+PUT,/questions/:id,UpdateQuestion,QuestionData JSON,QuestionData JSON,200 | 400 | 404 | 500,Update question by ID,"{""content"": ""Updated question?"", ""status"": ""resolved""}","{""id"": ""question_1758576900"", ""content"": ""Updated question?"", ...}",Updates UpdatedAt timestamp
+DELETE,/questions/:id,DeleteQuestion,None,Status message,200 | 404 | 500,Delete question by ID,None,"{""message"": ""Question deleted successfully""}",Also deletes related relationships
+
+POST,/causal-links,CreateCausalLink,CausalLink JSON,CausalLink JSON,201 | 400 | 500,Create a new causal link,"{""from_id"": ""flow_1758576873"", ""from_type"": ""Flow"", ""to_id"": ""stock_1758576860"", ""to_type"": ""Stock"", ""polarity"": 1.0, ""confidence"": 0.8}","{""from_id"": ""flow_1758576873"", ""from_type"": ""Flow"", ...}",Links between entities
+GET,/causal-links,GetCausalLinks,None,Array of CausalLink JSON,200 | 500,Get all causal links,None,"[{""from_id"": ""flow_1758576873"", ""from_type"": ""Flow"", ...}]",Returns array even if empty
+DELETE,/causal-links,DeleteCausalLink,CausalLink JSON,Status message,200 | 400 | 404 | 500,Delete specific causal link,"{""from_id"": ""flow_1758576873"", ""from_type"": ""Flow"", ""to_id"": ""stock_1758576860"", ""to_type"": ""Stock""}","{""message"": ""Causal link deleted successfully""}",Requires exact match for deletion
+
+POST,/describes,CreateDescribes,Describes JSON,Describes JSON,201 | 400 | 500,Create narrative-system relationship,"{""narrative_id"": ""narrative_1758576819"", ""system_id"": ""system_1758576829""}","{""narrative_id"": ""narrative_1758576819"", ""system_id"": ""system_1758576829""}",Links narrative to system
+GET,/describes,GetDescribes,None,Array of Describes JSON,200 | 500,Get all narrative-system relationships,None,"[{""narrative_id"": ""narrative_1758576819"", ""system_id"": ""system_1758576829""}]",Returns array even if empty
+DELETE,/describes,DeleteDescribes,Describes JSON,Status message,200 | 400 | 404 | 500,Delete narrative-system relationship,"{""narrative_id"": ""narrative_1758576819"", ""system_id"": ""system_1758576829""}","{""message"": ""Describes relationship deleted successfully""}",Requires exact match for deletion
+
+POST,/constitutes,CreateConstitutes,Constitutes JSON,Constitutes JSON,201 | 400 | 500,Create system-subsystem relationship,"{""subsystem_id"": ""system_1758576900"", ""system_id"": ""system_1758576829""}","{""subsystem_id"": ""system_1758576900"", ""system_id"": ""system_1758576829""}",Links subsystem to parent system
+GET,/constitutes,GetConstitutes,None,Array of Constitutes JSON,200 | 500,Get all system-subsystem relationships,None,"[{""subsystem_id"": ""system_1758576900"", ""system_id"": ""system_1758576829""}]",Returns array even if empty
+DELETE,/constitutes,DeleteConstitutes,Constitutes JSON,Status message,200 | 400 | 404 | 500,Delete system-subsystem relationship,"{""subsystem_id"": ""system_1758576900"", ""system_id"": ""system_1758576829""}","{""message"": ""Constitutes relationship deleted successfully""}",Requires exact match for deletion
+
+POST,/describes-static,CreateDescribesStatic,DescribesStatic JSON,DescribesStatic JSON,201 | 400 | 500,Create stock-system relationship,"{""stock_id"": ""stock_1758576860"", ""system_id"": ""system_1758576829""}","{""stock_id"": ""stock_1758576860"", ""system_id"": ""system_1758576829""}",Links stock to system
+GET,/describes-static,GetDescribesStatic,None,Array of DescribesStatic JSON,200 | 500,Get all stock-system relationships,None,"[{""stock_id"": ""stock_1758576860"", ""system_id"": ""system_1758576829""}]",Returns array even if empty
+DELETE,/describes-static,DeleteDescribesStatic,DescribesStatic JSON,Status message,200 | 400 | 404 | 500,Delete stock-system relationship,"{""stock_id"": ""stock_1758576860"", ""system_id"": ""system_1758576829""}","{""message"": ""DescribesStatic relationship deleted successfully""}",Requires exact match for deletion
+
+POST,/describes-dynamic,CreateDescribesDynamic,DescribesDynamic JSON,DescribesDynamic JSON,201 | 400 | 500,Create flow-system relationship,"{""flow_id"": ""flow_1758576873"", ""system_id"": ""system_1758576829""}","{""flow_id"": ""flow_1758576873"", ""system_id"": ""system_1758576829""}",Links flow to system
+GET,/describes-dynamic,GetDescribesDynamic,None,Array of DescribesDynamic JSON,200 | 500,Get all flow-system relationships,None,"[{""flow_id"": ""flow_1758576873"", ""system_id"": ""system_1758576829""}]",Returns array even if empty
+DELETE,/describes-dynamic,DeleteDescribesDynamic,DescribesDynamic JSON,Status message,200 | 400 | 404 | 500,Delete flow-system relationship,"{""flow_id"": ""flow_1758576873"", ""system_id"": ""system_1758576829""}","{""message"": ""DescribesDynamic relationship deleted successfully""}",Requires exact match for deletion
+
+POST,/changes,CreateChanges,Changes JSON,Changes JSON,201 | 400 | 500,Create flow-stock change relationship,"{""flow_id"": ""flow_1758576873"", ""stock_id"": ""stock_1758576860"", ""polarity"": 1.0}","{""flow_id"": ""flow_1758576873"", ""stock_id"": ""stock_1758576860"", ""polarity"": 1.0}",Links flow to stock with polarity
+GET,/changes,GetChanges,None,Array of Changes JSON,200 | 500,Get all flow-stock change relationships,None,"[{""flow_id"": ""flow_1758576873"", ""stock_id"": ""stock_1758576860"", ""polarity"": 1.0}]",Returns array even if empty
+DELETE,/changes,DeleteChanges,Changes JSON,Status message,200 | 400 | 404 | 500,Delete flow-stock change relationship,"{""flow_id"": ""flow_1758576873"", ""stock_id"": ""stock_1758576860""}","{""message"": ""Changes relationship deleted successfully""}",Requires exact match for deletion

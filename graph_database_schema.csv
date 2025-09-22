@@ -1,0 +1,18 @@
+Type,Node Label,Properties,Primary Key,Indexes,Relationships Out,Relationships In,Creation Pattern,Example Node,Purpose
+Node,Narrative,"id, title, content, created_at, updated_at",id,None,DESCRIBES,None,CREATE (n:Narrative {id: $id}),":Narrative {id: 'narrative_1758576819', title: 'Understanding Traffic Flow'}",Stores narrative text describing systems
+Node,System,"id, name, boundary_description, type, created_at",id,None,"CONSTITUTES (as parent), DescribesStatic, DescribesDynamic","DESCRIBES, CONSTITUTES (as subsystem)",CREATE (s:System {id: $id}),":System {id: 'system_1758576829', name: 'Urban Traffic System'}",Represents systems being analyzed
+Node,Stock,"id, name, description, created_at",id,None,DescribesStatic,Changes,CREATE (st:Stock {id: $id}),":Stock {id: 'stock_1758576860', name: 'Number of Cars on Road'}",Represents accumulations in systems
+Node,Flow,"id, name, description, created_at",id,None,"DescribesDynamic, Changes",None,CREATE (f:Flow {id: $id}),":Flow {id: 'flow_1758576873', name: 'Cars Entering System'}",Represents rates/flows in systems
+Node,QuestionData,"id, content, status, type, created_at, updated_at",id,None,None,None,CREATE (q:QuestionData {id: $id}),":QuestionData {id: 'question_1758576900', content: 'How does traffic light timing affect congestion?'}",Stores questions about system behavior
+
+Relationship,DESCRIBES,None,None,None,Narrative,System,"MATCH (n:Narrative {id: $narrative_id}), (s:System {id: $system_id}) CREATE (n)-[:DESCRIBES]->(s)","(:Narrative)-[:DESCRIBES]->(:System)",Links narratives to systems they describe
+Relationship,CONSTITUTES,None,None,None,System (subsystem),System (parent),"MATCH (sub:System {id: $subsystem_id}), (sys:System {id: $system_id}) CREATE (sub)-[:CONSTITUTES]->(sys)","(:System)-[:CONSTITUTES]->(:System)",Links subsystems to parent systems
+Relationship,DescribesStatic,None,None,None,Stock,System,"MATCH (st:Stock {id: $stock_id}), (s:System {id: $system_id}) CREATE (st)-[:DescribesStatic]->(s)","(:Stock)-[:DescribesStatic]->(:System)",Links stocks to systems they belong to
+Relationship,DescribesDynamic,None,None,None,Flow,System,"MATCH (f:Flow {id: $flow_id}), (s:System {id: $system_id}) CREATE (f)-[:DescribesDynamic]->(s)","(:Flow)-[:DescribesDynamic]->(:System)",Links flows to systems they belong to
+Relationship,Changes,polarity,None,None,Flow,Stock,"MATCH (f:Flow {id: $flow_id}), (st:Stock {id: $stock_id}) CREATE (f)-[:Changes {polarity: $polarity}]->(st)","(:Flow)-[:Changes {polarity: 1.0}]->(:Stock)",Links flows to stocks they modify
+Relationship,CausalLink,"from_id, from_type, to_id, to_type, polarity, confidence, stock_count, flow_count, created_at",None,None,None,None,Not directly stored as relationship - managed through CausalLink data structure,Virtual relationship through API,Represents causal relationships between any entities
+
+Schema,Neo4j Node Labels,"Narrative, System, Stock, Flow, QuestionData",None,None,None,None,None,All nodes follow consistent ID patterns,Core entity types in systems thinking
+Schema,Neo4j Relationship Types,"DESCRIBES, CONSTITUTES, DescribesStatic, DescribesDynamic, Changes",None,None,None,None,None,All relationships support systems thinking modeling,Core relationship types for system structure
+Schema,ID Generation Pattern,"prefix_timestamp",None,None,None,None,time.Now().UnixNano(),narrative_1758576819 | system_1758576829,Ensures unique identifiers across all entity types
+Schema,Property Patterns,"id (always), created_at (always), updated_at (omitempty)",None,None,None,None,Auto-generated timestamps,Standard patterns across all entities,Consistent data structure and temporal tracking

@@ -1,0 +1,41 @@
+Component,Layer,Technology,Purpose,Port/Interface,Configuration,Dependencies,Data Flow,Status
+Docker Compose,Infrastructure,Docker Compose,Container orchestration for development environment,Host ports 7474 7687 8080,docker-compose.yml,Docker Engine,Manages service lifecycle,Active
+Neo4j Database,Data Layer,Neo4j 5.15 Community,Graph database for entities and relationships,7474 (HTTP) 7687 (Bolt),NEO4J_AUTH=neo4j/password,Docker volume for persistence,Stores all system data,Running
+Go Backend,Application Layer,Go 1.23 + Gin,REST API server for CRUD operations,8080 (HTTP),Air for hot reload,Neo4j driver,Processes API requests,Running
+
+Backend Structure,Main Application,cmd/server/main.go,Application entry point and routing,HTTP server on :8080,Gin router configuration,Gin framework CORS middleware,Initializes routes and middleware,Implemented
+Backend Structure,Database Layer,internal/database/neo4j.go,Neo4j connection and session management,Neo4j Bolt protocol,Connection string and auth,Neo4j Go driver,Provides database access,Implemented
+Backend Structure,Models Layer,internal/models/models.go,Data structures for all entities and relationships,Go structs with JSON tags,No configuration,Standard library time,Defines data contracts,Implemented
+Backend Structure,Handlers Layer,internal/handlers/handlers.go,HTTP request handlers for all CRUD operations,HTTP handlers,No configuration,Models database Gin,Implements business logic,Implemented
+
+API Architecture,Entity Endpoints,REST CRUD pattern,Full CRUD for Narrative System Stock Flow QuestionData,HTTP methods on entity paths,Standard REST conventions,JSON serialization,Entity management,39+ endpoints active
+API Architecture,Relationship Endpoints,REST CRUD pattern,Full CRUD for all relationship types,HTTP methods on relationship paths,Standard REST conventions,JSON serialization,Relationship management,Relationship endpoints active
+API Architecture,CORS Support,gin-contrib/cors,Cross-origin resource sharing for frontend integration,CORS headers,AllowOrigins AllowMethods AllowHeaders,Gin CORS middleware,Enables frontend access,Enabled
+
+Data Architecture,Node Types,Neo4j Labels,5 core entity types: Narrative System Stock Flow QuestionData,Graph nodes with properties,Label-based organization,Neo4j schema,Entity storage,All types supported
+Data Architecture,Relationship Types,Neo4j Relationships,6 core relationship types: DESCRIBES CONSTITUTES DescribesStatic DescribesDynamic Changes CausalLink,Graph edges with properties,Type-based organization,Neo4j schema,Relationship storage,All types supported
+Data Architecture,ID Generation,Timestamp-based,Unique IDs with type prefix and timestamp,String IDs with pattern prefix_timestamp,Go time.Now().UnixNano(),Standard library time,Ensures uniqueness,All entities use pattern
+
+Development Environment,Hot Reload,Air,Automatic rebuild and restart on code changes,File watching,Air configuration,.air.toml,Monitors Go files,Development workflow,Active
+Development Environment,Volume Mounting,Docker volumes,Persistent data storage and code mounting,Host filesystem mapping,Docker Compose volumes,Host directories,Data persistence and development,Active
+Development Environment,Logging,Go standard log,Application logging and debugging,Console output,Standard Go logging,Go standard library,Development debugging,Enabled
+
+Networking,Backend Port,8080,HTTP API server port,External access to API,Docker port mapping,Host network access,API accessibility,Exposed
+Networking,Neo4j HTTP,7474,Neo4j browser interface,Web interface for database,Docker port mapping,Neo4j browser,Database management,Exposed
+Networking,Neo4j Bolt,7687,Neo4j binary protocol,High-performance database access,Docker port mapping,Go Neo4j driver,Application database access,Exposed
+
+Security,Database Authentication,Neo4j auth,Database access control,Username/password,NEO4J_AUTH environment variable,Neo4j authentication,Secured database access,Configured
+Security,CORS Configuration,Gin CORS,Frontend access control,HTTP headers,AllowOrigins configuration,Gin middleware,Controlled API access,Configured
+Security,Input Validation,Go JSON binding,Request data validation,HTTP request body validation,Gin binding,Go validation,Data integrity,Implemented
+
+Scalability,Horizontal Scaling,Docker containers,Multiple backend instances possible,Load balancer integration,Docker scaling,Container orchestration,Performance scaling,Scalable architecture
+Scalability,Database Scaling,Neo4j clustering,Database scaling for production,Neo4j Enterprise features,Cluster configuration,Neo4j Enterprise,Data scaling,Community edition limits
+Scalability,Caching,In-memory potential,Application-level caching possible,Memory-based caching,Cache configuration,Caching libraries,Performance optimization,Not implemented
+
+Monitoring,Application Logs,Go logging,Application behavior monitoring,Console and file output,Log configuration,Go standard library,Development monitoring,Basic logging
+Monitoring,Database Monitoring,Neo4j monitoring,Database performance and health,Neo4j monitoring tools,Neo4j configuration,Neo4j management,Database health,Basic monitoring
+Monitoring,Health Checks,HTTP endpoints,Service health monitoring,HTTP health endpoints,Health check configuration,HTTP framework,Service monitoring,Not implemented
+
+Deployment,Development,Docker Compose,Local development environment,Local ports and volumes,docker-compose.yml,Docker and Docker Compose,Development workflow,Active
+Deployment,Production,Container deployment,Production deployment ready,Cloud container services,Production configuration,Container orchestration platform,Production deployment,Ready for deployment
+Deployment,CI/CD,Pipeline ready,Continuous integration and deployment ready,Build and deploy automation,CI/CD configuration,CI/CD platform,Automated deployment,Ready for implementation

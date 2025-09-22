@@ -51,58 +51,54 @@ func main() {
 	// API routes
 	api := r.Group("/api/v1")
 	{
-		// Concept routes
-		api.POST("/concepts", h.CreateConcept)
-		api.GET("/concepts", h.GetConcepts)
-		api.GET("/concepts/:id", h.GetConcept)
-		api.PUT("/concepts/:id", h.UpdateConcept)
-		api.DELETE("/concepts/:id", h.DeleteConcept)
+		// Narrative routes
+		api.POST("/narratives", h.CreateNarrative)
+		api.GET("/narratives", h.GetNarratives)
+		api.GET("/narratives/:id", h.GetNarrative)
+		api.PUT("/narratives/:id", h.UpdateNarrative)
+		api.DELETE("/narratives/:id", h.DeleteNarrative)
 
-		// Essay routes
-		api.POST("/essays", h.CreateEssay)
-		api.GET("/essays", h.GetEssays)
-		api.GET("/essays/:id", h.GetEssay)
-		api.PUT("/essays/:id", h.UpdateEssay)
-		api.DELETE("/essays/:id", h.DeleteEssay)
+		// System routes
+		api.POST("/systems", h.CreateSystem)
+		api.GET("/systems", h.GetSystems)
+		api.GET("/systems/:id", h.GetSystem)
+		api.PUT("/systems/:id", h.UpdateSystem)
+		api.DELETE("/systems/:id", h.DeleteSystem)
 
-		// Claim routes
-		api.POST("/claims", h.CreateClaim)
-		api.GET("/claims", h.GetClaims)
-		api.GET("/claims/:id", h.GetClaim)
-		api.PUT("/claims/:id", h.UpdateClaim)
-		api.DELETE("/claims/:id", h.DeleteClaim)
+		// Stock routes
+		api.POST("/stocks", h.CreateStock)
+		api.GET("/stocks", h.GetStocks)
+		api.GET("/stocks/:id", h.GetStock)
+		api.PUT("/stocks/:id", h.UpdateStock)
+		api.DELETE("/stocks/:id", h.DeleteStock)
 
-		// Source routes
-		api.POST("/sources", h.CreateSource)
-		api.GET("/sources", h.GetSources)
-		api.GET("/sources/:id", h.GetSource)
-		api.PUT("/sources/:id", h.UpdateSource)
-		api.DELETE("/sources/:id", h.DeleteSource)
+		// Flow routes
+		api.POST("/flows", h.CreateFlow)
+		api.GET("/flows", h.GetFlows)
+		api.GET("/flows/:id", h.GetFlow)
+		api.PUT("/flows/:id", h.UpdateFlow)
+		api.DELETE("/flows/:id", h.DeleteFlow)
 
-		// Question routes
-		api.POST("/questions", h.CreateQuestion)
-		api.GET("/questions", h.GetQuestions)
-		api.GET("/questions/:id", h.GetQuestion)
-		api.PUT("/questions/:id", h.UpdateQuestion)
-		api.DELETE("/questions/:id", h.DeleteQuestion)
+		// QuestionData routes
+		api.POST("/questions", h.CreateQuestionData)
+		api.GET("/questions", h.GetQuestionDataList)
+		api.GET("/questions/:id", h.GetQuestionData)
+		api.PUT("/questions/:id", h.UpdateQuestionData)
+		api.DELETE("/questions/:id", h.DeleteQuestionData)
+
+		// CausalLink routes
+		api.POST("/causal-links", h.CreateCausalLink)
+		api.GET("/causal-links", h.GetCausalLinks)
+		api.GET("/causal-links/:from_id/:to_id", h.GetCausalLink)
+		api.PUT("/causal-links/:from_id/:to_id", h.UpdateCausalLink)
+		api.DELETE("/causal-links/:from_id/:to_id", h.DeleteCausalLink)
 
 		// Relationship routes
-		api.POST("/relationships", h.CreateRelationship)
-		api.GET("/connections", h.GetConnections)
-		api.POST("/points-to", h.CreatePointsTo)
-		api.POST("/defines", h.CreateDefines)
-		api.POST("/influences", h.CreateInfluences)
-		api.POST("/supports", h.CreateSupports)
-		api.POST("/contradicts", h.CreateContradicts)
-		api.POST("/derived-from", h.CreateDerivedFrom)
-		api.POST("/raises", h.CreateRaises)
-
-		// Analytical endpoints for agentic systems
-		api.GET("/search", h.SearchKnowledge)
-		api.GET("/stats", h.GetKnowledgeStats)
-		api.GET("/path", h.FindPath)
-		api.GET("/neighborhood/:id", h.GetNodeNeighborhood)
-		api.GET("/insights", h.GetKnowledgeInsights)
+		api.POST("/relationships/describes", h.CreateDescribesRelationship)
+		api.POST("/relationships/constitutes", h.CreateConstitutesRelationship)
+		api.POST("/relationships/describes-static", h.CreateDescribesStaticRelationship)
+		api.POST("/relationships/describes-dynamic", h.CreateDescribesDynamicRelationship)
+		api.POST("/relationships/changes", h.CreateChangesRelationship)
 	}
 
 	port := os.Getenv("PORT")
