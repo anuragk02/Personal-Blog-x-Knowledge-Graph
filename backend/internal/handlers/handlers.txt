@@ -1,0 +1,21 @@
+We will need the Handlers to perform the following tasks on the Graph database.
+
+FOR WRITING PROCESS AND LLM WORKFLOW
+Creating New Narrative
+Updating Narrative
+Deleting Narrative
+Reading Narrative
+
+AFTER EXTRACTION USING LLM TO CREATE WORLDVIEW
+Create new System Nodes
+Create new Stock Nodes
+Create new Flow Nodes
+Create new Describes Relationships (Narrative -> System)
+Create new Constitutes Relationships (System -> System)
+Create new DescribesStatic Relationships (Stock -> System)
+Create new DescribesDynamic Relationships (Flow -> System)
+Create new Changes Relationships (Flow -> Stock)
+Create new CausalLink Relationships (Stock/Flow -> Stock/Flow)
+
+This is all the functionality I need for Now, But Call create functions should handle ID creation as well.
+I like the type_timestamp format for ID as long as it will never create duplicate IDs.

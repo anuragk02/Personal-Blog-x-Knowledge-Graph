@@ -13,10 +13,10 @@ type DB struct {
 }
 
 func NewDB() *DB {
-	uri := os.Getenv("NEO4J_URI")
-	if uri == "" {
-		uri = "neo4j://localhost:7687"
-	}
+    uri := os.Getenv("NEO4J_URI")
+    if uri == "" {
+        uri = "neo4j://neo4j:7687"
+    }
 
 	user := os.Getenv("NEO4J_USER")
 	if user == "" {
@@ -55,7 +55,7 @@ func (db *DB) ExecuteRead(ctx context.Context, query string, params map[string]i
 	if err != nil {
 		return nil, err
 	}
-
+	
 	var records []map[string]interface{}
 	for result.Next(ctx) {
 		record := result.Record()

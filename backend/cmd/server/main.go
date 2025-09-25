@@ -51,54 +51,31 @@ func main() {
 	// API routes
 	api := r.Group("/api/v1")
 	{
-		// Narrative routes
+		// Health check
+		api.GET("/health", h.HealthCheck)
+
+		// FOR WRITING PROCESS AND LLM WORKFLOW
+		// Narrative CRUD operations
 		api.POST("/narratives", h.CreateNarrative)
-		api.GET("/narratives", h.GetNarratives)
 		api.GET("/narratives/:id", h.GetNarrative)
 		api.PUT("/narratives/:id", h.UpdateNarrative)
 		api.DELETE("/narratives/:id", h.DeleteNarrative)
 
-		// System routes
+		// AFTER EXTRACTION USING LLM TO CREATE WORLDVIEW
+		// Node creation endpoints (with auto-generated IDs)
 		api.POST("/systems", h.CreateSystem)
-		api.GET("/systems", h.GetSystems)
-		api.GET("/systems/:id", h.GetSystem)
-		api.PUT("/systems/:id", h.UpdateSystem)
-		api.DELETE("/systems/:id", h.DeleteSystem)
-
-		// Stock routes
 		api.POST("/stocks", h.CreateStock)
-		api.GET("/stocks", h.GetStocks)
-		api.GET("/stocks/:id", h.GetStock)
-		api.PUT("/stocks/:id", h.UpdateStock)
-		api.DELETE("/stocks/:id", h.DeleteStock)
-
-		// Flow routes
 		api.POST("/flows", h.CreateFlow)
-		api.GET("/flows", h.GetFlows)
-		api.GET("/flows/:id", h.GetFlow)
-		api.PUT("/flows/:id", h.UpdateFlow)
-		api.DELETE("/flows/:id", h.DeleteFlow)
 
-		// QuestionData routes
-		api.POST("/questions", h.CreateQuestionData)
-		api.GET("/questions", h.GetQuestionDataList)
-		api.GET("/questions/:id", h.GetQuestionData)
-		api.PUT("/questions/:id", h.UpdateQuestionData)
-		api.DELETE("/questions/:id", h.DeleteQuestionData)
+		// Relationship creation endpoints
+		api.POST("/relationships/describes", h.CreateDescribesRelationship)                // Narrative -> System
+		api.POST("/relationships/constitutes", h.CreateConstitutesRelationship)            // System -> System
+		api.POST("/relationships/describes-static", h.CreateDescribesStaticRelationship)   // Stock -> System
+		api.POST("/relationships/describes-dynamic", h.CreateDescribesDynamicRelationship) // Flow -> System
+		api.POST("/relationships/changes", h.CreateChangesRelationship)                    // Flow -> Stock
 
-		// CausalLink routes
-		api.POST("/causal-links", h.CreateCausalLink)
-		api.GET("/causal-links", h.GetCausalLinks)
-		api.GET("/causal-links/:from_id/:to_id", h.GetCausalLink)
-		api.PUT("/causal-links/:from_id/:to_id", h.UpdateCausalLink)
-		api.DELETE("/causal-links/:from_id/:to_id", h.DeleteCausalLink)
-
-		// Relationship routes
-		api.POST("/relationships/describes", h.CreateDescribesRelationship)
-		api.POST("/relationships/constitutes", h.CreateConstitutesRelationship)
-		api.POST("/relationships/describes-static", h.CreateDescribesStaticRelationship)
-		api.POST("/relationships/describes-dynamic", h.CreateDescribesDynamicRelationship)
-		api.POST("/relationships/changes", h.CreateChangesRelationship)
+		// CausalLink creation endpoint
+		api.POST("/causal-links", h.CreateCausalLink) // Stock/Flow -> Stock/Flow
 	}
 
 	port := os.Getenv("PORT")
