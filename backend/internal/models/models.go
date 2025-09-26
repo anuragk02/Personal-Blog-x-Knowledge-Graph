@@ -10,26 +10,20 @@ type NarrativeRequest struct {
 
 type SystemRequest struct {
 	Name                string `json:"name"`
-	BoundaryDescription string `json:"boundary_description,omitempty"`
+	BoundaryDescription string `json:"boundaryDescription,omitempty"`
 }
 
 type StockRequest struct {
 	Name        string `json:"name"`
+	// FormalConcept string `json:"formal_concept,omitempty"`
 	Description string `json:"description,omitempty"`
 	Type        string `json:"type"` // "qualitative" or "quantitative"
 }
 
 type FlowRequest struct {
 	Name        string `json:"name"`
+	// FormalConcept string `json:"formal_concept,omitempty"`
 	Description string `json:"description,omitempty"`
-}
-
-type CausalLinkRequest struct {
-	FromType string `json:"from_type"` // "Stock" or "Flow"
-	FromID   string `json:"from_id"`
-	ToType   string `json:"to_type"` // "Stock" or "Flow"
-	ToID     string `json:"to_id"`
-	Question string `json:"question"` // The specific question linking them
 }
 
 // Response models (full entities with IDs)
@@ -37,75 +31,79 @@ type Narrative struct {
 	ID        string    `json:"id"`
 	Title     string    `json:"title"`
 	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt,omitempty"`
 }
 
 type System struct {
 	ID                  string    `json:"id"`
 	Name                string    `json:"name"`
-	BoundaryDescription string    `json:"boundary_description,omitempty"`
-	CreatedAt           time.Time `json:"created_at"`
+	BoundaryDescription string    `json:"boundaryDescription,omitempty"`
+	CreatedAt           time.Time `json:"createdAt"`
 }
 
 type Stock struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
+	// FormalConcept string    `json:"formal_concept,omitempty"`
 	Description string    `json:"description,omitempty"`
 	Type        string    `json:"type"` // "qualitative" or "quantitative"
-	CreatedAt   time.Time `json:"created_at"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type Flow struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
+	// FormalConcept string    `json:"formal_concept,omitempty"`
 	Description string    `json:"description,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
-type CausalLink struct {
-	FromID    string    `json:"from_id"`
-	FromType  string    `json:"from_type"` // "Stock" or "Flow"
-	ToID      string    `json:"to_id"`
-	ToType    string    `json:"to_type"`  // "Stock" or "Flow"
-	Question  string    `json:"question"` // The specific question linking them
-	CreatedAt time.Time `json:"created_at"`
-}
 
 // Relationships
 type Describes struct {
-	NarrativeID string `json:"narrative_id"` // From
-	SystemID    string `json:"system_id"`    // To
+	NarrativeID string `json:"narrativeId"` // From
+	SystemID    string `json:"systemId"`    // To
 }
 
 type Constitutes struct {
-	SystemID    string `json:"system_id"`    // To
-	SubsystemID string `json:"subsystem_id"` // From
+	SystemID    string `json:"systemId"`    // To
+	SubsystemID string `json:"subsystemId"` // From
 }
 
 type DescribesStatic struct {
-	SystemID string `json:"system_id"` // To
-	StockID  string `json:"stock_id"`  // From
+	SystemID string `json:"systemId"` // To
+	StockID  string `json:"stockId"`  // From
 }
 
 type DescribesDynamic struct {
-	SystemID string `json:"system_id"` // To
-	FlowID   string `json:"flow_id"`   // From
+	SystemID string `json:"systemId"` // To
+	FlowID   string `json:"flowId"`   // From
 }
 
 type Changes struct {
-	FlowID   string  `json:"flow_id"`  // From
-	StockID  string  `json:"stock_id"` // To
+	FlowID   string  `json:"flowId"`  // From
+	StockID  string  `json:"stockId"` // To
 	Polarity float32 `json:"polarity"` // +1 or -1
 }
 
-// Pseudo-Functions API Provided to LLM
-// `linkNarrativeToSystem(narrative, system_name, boundary_description)`
-// `createSystem(name, boundary_description)`
-// `createStock(name, description, type)` where `type` is **`StockType.QUALITATIVE`** or **`StockType.QUANTITATIVE`**.
-// `createFlow(name, description, )`
-// `linkSystemAsSubsystem(parent_system_id, child_system_id)`
-// `linkSystemToStock(system_id, stock_id)`
-// `linkFlowToSystem(flow_id, system_id)`
-// `linkFlowToStock(flow_id, stock_id, polarity)`
-// `createCausalLink(from_type, from_id, to_type, to_id, question)`
+type CausalLink struct {
+	FromID    string    `json:"fromId"`
+	FromType  string    `json:"fromType"` // "Stock" or "Flow"
+	ToID      string    `json:"toId"`
+	ToType    string    `json:"toType"`  // "Stock" or "Flow"
+	Question  string    `json:"question"` // The specific question linking them
+	CuriosityScore float32   `json:"curiosityScore"`
+}
+
+type AnalyzeNarrativeRequest struct {
+	NarrativeID string `json:"id"`
+}
+
+type LLMAction struct {
+    FunctionName string                 `json:"function_name"`
+    Parameters   map[string]interface{} `json:"parameters"`
+}
+type LLMResponse struct {
+    Actions []LLMAction `json:"actions"`
+}

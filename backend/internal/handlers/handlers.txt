@@ -5,6 +5,7 @@ Creating New Narrative
 Updating Narrative
 Deleting Narrative
 Reading Narrative
+Reading All Narratives
 
 AFTER EXTRACTION USING LLM TO CREATE WORLDVIEW
 Create new System Nodes

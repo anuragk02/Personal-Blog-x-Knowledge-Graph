@@ -51,31 +51,42 @@ func main() {
 	// API routes
 	api := r.Group("/api/v1")
 	{
-		// Health check
+		// Health Check
 		api.GET("/health", h.HealthCheck)
 
-		// FOR WRITING PROCESS AND LLM WORKFLOW
-		// Narrative CRUD operations
-		api.POST("/narratives", h.CreateNarrative)
-		api.GET("/narratives/:id", h.GetNarrative)
-		api.PUT("/narratives/:id", h.UpdateNarrative)
-		api.DELETE("/narratives/:id", h.DeleteNarrative)
+		// Narrative CRUD endpoints
+		narratives := api.Group("/narratives")
+		{
+			narratives.POST("", h.CreateNarrativeNode)
+			narratives.GET("", h.GetNarratives)
+			narratives.GET("/:id", h.GetNarrativeByID)
+			narratives.PUT("/:id", h.UpdateNarrativeNode)
+			narratives.DELETE("/:id", h.DeleteNarrativeNode)
+			// LLM Workflow Endpoint - ID provided in request body
+			narratives.POST("/analyze", h.AnalyzeNarrative)
+		}
 
-		// AFTER EXTRACTION USING LLM TO CREATE WORLDVIEW
-		// Node creation endpoints (with auto-generated IDs)
-		api.POST("/systems", h.CreateSystem)
-		api.POST("/stocks", h.CreateStock)
-		api.POST("/flows", h.CreateFlow)
+		// Node Creation Endpoints (Manual)
+		nodes := api.Group("/nodes")
+		{
+			nodes.POST("/systems", h.CreateSystemNode)
+			nodes.POST("/stocks", h.CreateStock)
+			nodes.POST("/flows", h.CreateFlow)
+		}
 
-		// Relationship creation endpoints
-		api.POST("/relationships/describes", h.CreateDescribesRelationship)                // Narrative -> System
-		api.POST("/relationships/constitutes", h.CreateConstitutesRelationship)            // System -> System
-		api.POST("/relationships/describes-static", h.CreateDescribesStaticRelationship)   // Stock -> System
-		api.POST("/relationships/describes-dynamic", h.CreateDescribesDynamicRelationship) // Flow -> System
-		api.POST("/relationships/changes", h.CreateChangesRelationship)                    // Flow -> Stock
+		// Relationship Creation Endpoints (Manual)
+		relationships := api.Group("/relationships")
+		{
+			relationships.POST("/describes", h.CreateDescribesRelationship)
+			relationships.POST("/constitutes", h.CreateConstitutesRelationship)
+			relationships.POST("/describes-static", h.CreateDescribesStaticRelationship)
+			relationships.POST("/describes-dynamic", h.CreateDescribesDynamicRelationship)
+			relationships.POST("/changes", h.CreateChangesRelationship)
+			relationships.POST("/causal-link", h.CreateCausalLink)
+		}
 
-		// CausalLink creation endpoint
-		api.POST("/causal-links", h.CreateCausalLink) // Stock/Flow -> Stock/Flow
+		// Utility Endpoint to clean the graph
+		api.POST("/clean", h.CleanNonNarrativeData)
 	}
 
 	port := os.Getenv("PORT")
