@@ -549,13 +549,25 @@ func (h *Handler) AnalyzeNarrative(c *gin.Context) {
 
 	// --- Step 2: Build and Send Request to Gemini API ---
 	llmApiUrl := "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-	prompt := buildLLMPrompt(narrative.Content)
+	userPrompt := fmt.Sprintf(userPromptTemplate, narrative.Title, narrative.Content)
 
+	// The new payload has a dedicated "systemInstruction" field
 	payload := map[string]interface{}{
-		"contents": []map[string]interface{}{
-			{"parts": []map[string]string{{"text": prompt}}},
+		"systemInstruction": map[string]interface{}{
+			"parts": []map[string]string{
+				{"text": systemInstruction},
+			},
 		},
-		"generationConfig": map[string]string{"response_mime_type": "application/json"},
+		"contents": []map[string]interface{}{
+			{
+				"parts": []map[string]string{
+					{"text": userPrompt},
+				},
+			},
+		},
+		"generationConfig": map[string]string{
+			"response_mime_type": "application/json",
+		},
 	}
 	llmReqBody, _ := json.Marshal(payload)
 
@@ -611,9 +623,15 @@ func (h *Handler) AnalyzeNarrative(c *gin.Context) {
 		return
 	}
 
-	// --- Step 4 & 5: Execute the Plan (Two-Pass Orchestration) ---
-	systemIDs, stockIDs, flowIDs := make(map[string]string), make(map[string]string), make(map[string]string)
+	// Log the LLM response for debugging/analysis
+	log.Printf("LLM_RESPONSE [Narrative: %s] [Timestamp: %s]: %s",
+		req.NarrativeID,
+		time.Now().Format(time.RFC3339),
+		llmPlanJSON)
 
+	// --- Step 4 & 5: Execute the Plan (Two-Pass Orchestration) ---
+	narrativeIDs, systemIDs, stockIDs, flowIDs := make(map[string]string), make(map[string]string), make(map[string]string), make(map[string]string)
+	narrativeIDs[narrative.Title] = narrative.ID // Pre-populate with existing narrative
 	// PASS 1: Create All Nodes
 	for _, action := range llmPlan.Actions {
 		params := action.Parameters
@@ -666,12 +684,15 @@ func (h *Handler) AnalyzeNarrative(c *gin.Context) {
 		params := action.Parameters
 		switch action.FunctionName {
 		case "CreateDescribesRelationship":
-			systemName, ok := params["systemName"].(string)
-			if !ok {
+			narrativeName, ok1 := params["narrativeName"].(string)
+			systemName, ok2 := params["systemName"].(string)
+			if !ok1 || !ok2 {
 				continue
 			}
-			if systemID, ok := systemIDs[systemName]; ok {
-				h.createDescribesRelationshipInDB(c.Request.Context(), req.NarrativeID, systemID)
+			if systemID, ok2 := systemIDs[systemName]; ok2 {
+				if narrativeID, ok1 := narrativeIDs[narrativeName]; ok1 {
+					h.createDescribesRelationshipInDB(c.Request.Context(), narrativeID, systemID)
+				}
 			}
 		case "CreateConstitutesRelationship":
 			subsystemName, ok1 := params["subsystemName"].(string)
@@ -735,9 +756,7 @@ func (h *Handler) AnalyzeNarrative(c *gin.Context) {
 	})
 }
 
-// buildLLMPrompt is a helper to construct the full prompt for the LLM.
-func buildLLMPrompt(narrativeContent string) string {
-	const promptTemplate = `
+const systemInstruction = `
 	**1. Your Role and Mission**
 	You are a Cognitive Scientist specializing in knowledge modeling. Your mission is to help a friend understand their own thinking by modeling their beliefs, as revealed through their writing, into a Network of Nodes and Relationships. Your analytical framework is Systems Thinking. You see the world as a network of nested Systems, which are described by their Stocks (state variables) and dynamic interactions (Flows). Your goal is to map the writer's understanding of these systems, their parts, and their interactions into a graph database. You must remain detached and abstract. All beliefs about specific people should be generalized to describe the "Human System." You are mapping their knowledge of the world, not their personal diary.
 	**2. Core Principles of Analysis**
@@ -751,19 +770,31 @@ func buildLLMPrompt(narrativeContent string) string {
 	- ` + "`CreateSystemNode(name: string, boundaryDescription: string)`" + `
 	- ` + "`CreateStockNode(name: string, description: string, type: string)`" + `
 	- ` + "`CreateFlowNode(name: string, description: string)`" + `
-	- ` + "`CreateDescribesRelationship(systemName: string)`" + `
+	- ` + "`CreateDescribesRelationship(narrativeName: string, systemName: string)`" + `
 	- ` + "`CreateConstitutesRelationship(subsystemName: string, systemName: string)`" + `
 	- ` + "`CreateDescribesStaticRelationship(stockName: string, systemName: string)`" + `
 	- ` + "`CreateChangesRelationship(flowName: string, stockName: string, polarity: float)`" + `
 	- ` + "`CreateCausalLinkRelationship(fromType: string, fromName: string, toType: string, toName: string, curiosity: string, curiosityScore: float)`" + `
 	**4. Your Task**
-	Your output must be a single JSON object with a key named "actions". The value should be an array of objects, where each object represents a function call with "function_name" and "parameters" keys. Do not provide any other explanatory text. Analyze the following narrative:
-	--- NARRATIVE START ---
-	%s
-	--- NARRATIVE END ---
-	`
-	return fmt.Sprintf(promptTemplate, narrativeContent)
-}
+	Your output must be a single JSON object with a key named "actions". The value should be an array of objects, where each object represents a function call with "function_name" and "parameters" keys. Do not provide any other explanatory text. "Your output must be a single, valid JSON object. Ensure that all objects in the 'actions' array are separate and correctly formatted, with no nesting of action objects inside the parameters of other actions. The response will be parsed automatically and must be perfect." Analyze the following narrative:
+	Example valid output:
+	{
+		"actions": [
+			{
+  				"function_name": "CreateSystemNode",
+  				"parameters": { "name": "System A", "boundaryDescription": "..." }
+			},
+			{
+  				"function_name": "CreateStockNode",
+  				"parameters": { "name": "Stock B", "description": "...", "type": "qualitative" }
+			}
+  		]
+	}`
+
+const userPromptTemplate = `
+	Narrative Title: %s
+	Narrative Content: %s
+`
 
 // getIDFromNameAndType is a helper to find an ID from the correct map.
 func getIDFromNameAndType(name, nodeType string, stockIDs, flowIDs map[string]string) string {
