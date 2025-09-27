@@ -51,31 +51,32 @@ func (h *Handler) CreateNarrativeNode(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
+	now := time.Now()
 	// Generate unique ID using type_timestamp format
 	narrative := models.Narrative{
-		ID:      fmt.Sprintf("narrative_%d", time.Now().UnixNano()),
-		Title:   req.Title,
-		Content: req.Content,
+		ID:           fmt.Sprintf("narrative_%d", time.Now().UnixNano()),
+		Title:        req.Title,
+		Content:      req.Content,
+		Extrapolated: false, // Always start as false, only set to true after LLM analysis
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
-
-	now := time.Now()
-	narrative.CreatedAt = now
-	narrative.UpdatedAt = now
 
 	query := `CREATE (n:Narrative {
 		id: $id, 
 		title: $title, 
-		content: $content, 
+		content: $content,
+		extrapolated: $extrapolated, 
 		created_at: $created_at, 
 		updated_at: $updated_at
 	})`
 	params := map[string]interface{}{
-		"id":         narrative.ID,
-		"title":      narrative.Title,
-		"content":    narrative.Content,
-		"created_at": narrative.CreatedAt.Format(time.RFC3339),
-		"updated_at": narrative.UpdatedAt.Format(time.RFC3339),
+		"id":           narrative.ID,
+		"title":        narrative.Title,
+		"content":      narrative.Content,
+		"extrapolated": narrative.Extrapolated,
+		"created_at":   narrative.CreatedAt.Format(time.RFC3339),
+		"updated_at":   narrative.UpdatedAt.Format(time.RFC3339),
 	}
 
 	_, err := h.db.ExecuteQuery(context.Background(), query, params)
@@ -91,7 +92,7 @@ func (h *Handler) CreateNarrativeNode(c *gin.Context) {
 func (h *Handler) GetNarrativeByID(c *gin.Context) {
 	id := c.Param("id")
 	query := `MATCH (n:Narrative {id: $id}) 
-			  RETURN n.id, n.title, n.content, n.created_at, n.updated_at`
+			  RETURN n.id, n.title, n.content, n.extrapolated, n.created_at, n.updated_at`
 	params := map[string]interface{}{"id": id}
 
 	records, err := h.db.ExecuteRead(context.Background(), query, params)
@@ -112,6 +113,13 @@ func (h *Handler) GetNarrativeByID(c *gin.Context) {
 		Content: record["n.content"].(string),
 	}
 
+	// Safely handle boolean conversion for extrapolated field
+	if extrapolated, ok := record["n.extrapolated"].(bool); ok {
+		narrative.Extrapolated = extrapolated
+	} else {
+		narrative.Extrapolated = false // default value if not set
+	}
+
 	if createdAtStr := getStringValue(record, "n.created_at"); createdAtStr != "" {
 		if createdAt, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
 			narrative.CreatedAt = createdAt
@@ -129,8 +137,8 @@ func (h *Handler) GetNarrativeByID(c *gin.Context) {
 
 // Get Narratives - Reads all narratives
 func (h *Handler) GetNarratives(c *gin.Context) {
-	query := `MATCH (n:Narrative) 
-			  RETURN n.id, n.title, n.content, n.created_at, n.updated_at`
+	query := `MATCH (n:Narrative)
+			  RETURN n.id, n.title, n.content, n.extrapolated, n.created_at, n.updated_at`
 	params := map[string]interface{}{}
 
 	records, err := h.db.ExecuteRead(context.Background(), query, params)
@@ -145,6 +153,13 @@ func (h *Handler) GetNarratives(c *gin.Context) {
 			ID:      record["n.id"].(string),
 			Title:   record["n.title"].(string),
 			Content: record["n.content"].(string),
+		}
+
+		// Safely handle boolean conversion for extrapolated field
+		if extrapolated, ok := record["n.extrapolated"].(bool); ok {
+			narrative.Extrapolated = extrapolated
+		} else {
+			narrative.Extrapolated = false // default value if not set
 		}
 
 		if createdAtStr := getStringValue(record, "n.created_at"); createdAtStr != "" {
@@ -227,296 +242,6 @@ func (h *Handler) DeleteNarrativeNode(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Narrative deleted successfully"})
-}
-
-// =============================================================================
-// NODE CREATION HANDLERS - AFTER EXTRACTION USING LLM TO CREATE WORLDVIEW
-// =============================================================================
-
-// CreateSystem - Creates a new system node with auto-generated ID
-func (h *Handler) CreateSystemNode(c *gin.Context) {
-	var req models.SystemRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	system := models.System{
-		ID:                  fmt.Sprintf("system_%d", time.Now().UnixNano()),
-		Name:                req.Name,
-		BoundaryDescription: req.BoundaryDescription,
-		CreatedAt:           time.Now(),
-	}
-
-	query := `CREATE (s:System {
-		id: $id, 
-		name: $name, 
-		boundary_description: $boundary_description, 
-		created_at: $created_at
-	})`
-	params := map[string]interface{}{
-		"id":                   system.ID,
-		"name":                 system.Name,
-		"boundary_description": system.BoundaryDescription,
-		"created_at":           system.CreatedAt.Format(time.RFC3339),
-	}
-
-	_, err := h.db.ExecuteQuery(context.Background(), query, params)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, system)
-}
-
-// CreateStock - Creates a new stock node with auto-generated ID
-func (h *Handler) CreateStock(c *gin.Context) {
-	var req models.StockRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Validate Stock.Type
-	if req.Type != "qualitative" && req.Type != "quantitative" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Stock type must be either 'qualitative' or 'quantitative'"})
-		return
-	}
-
-	stock := models.Stock{
-		ID:          fmt.Sprintf("stock_%d", time.Now().UnixNano()),
-		Name:        req.Name,
-		Description: req.Description,
-		Type:        req.Type,
-		CreatedAt:   time.Now(),
-	}
-
-	query := `CREATE (st:Stock {
-		id: $id, 
-		name: $name,
-		description: $description, 
-		type: $type, 
-		created_at: $created_at
-	})`
-	params := map[string]interface{}{
-		"id":          stock.ID,
-		"name":        stock.Name,
-		"description": stock.Description,
-		"type":        stock.Type,
-		"created_at":  stock.CreatedAt.Format(time.RFC3339),
-	}
-
-	_, err := h.db.ExecuteQuery(context.Background(), query, params)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, stock)
-}
-
-// CreateFlow - Creates a new flow node with auto-generated ID
-func (h *Handler) CreateFlow(c *gin.Context) {
-	var req models.FlowRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	flow := models.Flow{
-		ID:          fmt.Sprintf("flow_%d", time.Now().UnixNano()),
-		Name:        req.Name,
-		Description: req.Description,
-		CreatedAt:   time.Now(),
-	}
-
-	query := `CREATE (f:Flow {
-		id: $id, 
-		name: $name, 
-		description: $description, 
-		created_at: $created_at
-	})`
-	params := map[string]interface{}{
-		"id":          flow.ID,
-		"name":        flow.Name,
-		"description": flow.Description,
-		"created_at":  flow.CreatedAt.Format(time.RFC3339),
-	}
-
-	_, err := h.db.ExecuteQuery(context.Background(), query, params)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, flow)
-}
-
-// =============================================================================
-// RELATIONSHIP CREATION HANDLERS
-// =============================================================================
-
-// CreateDescribesRelationship - Creates Narrative -> System relationship
-func (h *Handler) CreateDescribesRelationship(c *gin.Context) {
-	var describes models.Describes
-	if err := c.ShouldBindJSON(&describes); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	query := `MATCH (n:Narrative {id: $narrative_id}), (s:System {id: $system_id})
-			  CREATE (n)-[:DESCRIBES]->(s)`
-	params := map[string]interface{}{
-		"narrative_id": describes.NarrativeID,
-		"system_id":    describes.SystemID,
-	}
-
-	_, err := h.db.ExecuteQuery(context.Background(), query, params)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, describes)
-}
-
-// CreateConstitutesRelationship - Creates System -> System (subsystem) relationship
-func (h *Handler) CreateConstitutesRelationship(c *gin.Context) {
-	var constitutes models.Constitutes
-	if err := c.ShouldBindJSON(&constitutes); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	query := `MATCH (sub:System {id: $subsystem_id}), (sys:System {id: $system_id})
-			  CREATE (sub)-[:CONSTITUTES]->(sys)`
-	params := map[string]interface{}{
-		"subsystem_id": constitutes.SubsystemID,
-		"system_id":    constitutes.SystemID,
-	}
-
-	_, err := h.db.ExecuteQuery(context.Background(), query, params)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, constitutes)
-}
-
-// CreateDescribesStaticRelationship - Creates Stock -> System relationship
-func (h *Handler) CreateDescribesStaticRelationship(c *gin.Context) {
-	var describesStatic models.DescribesStatic
-	if err := c.ShouldBindJSON(&describesStatic); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	query := `MATCH (st:Stock {id: $stock_id}), (s:System {id: $system_id})
-			  CREATE (st)-[:DESCRIBES_STATIC]->(s)`
-	params := map[string]interface{}{
-		"stock_id":  describesStatic.StockID,
-		"system_id": describesStatic.SystemID,
-	}
-
-	_, err := h.db.ExecuteQuery(context.Background(), query, params)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, describesStatic)
-}
-
-// CreateDescribesDynamicRelationship - Creates Flow -> System relationship
-func (h *Handler) CreateDescribesDynamicRelationship(c *gin.Context) {
-	var describesDynamic models.DescribesDynamic
-	if err := c.ShouldBindJSON(&describesDynamic); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	query := `MATCH (f:Flow {id: $flow_id}), (s:System {id: $system_id})
-			  CREATE (f)-[:DESCRIBES_DYNAMIC]->(s)`
-	params := map[string]interface{}{
-		"flow_id":   describesDynamic.FlowID,
-		"system_id": describesDynamic.SystemID,
-	}
-
-	_, err := h.db.ExecuteQuery(context.Background(), query, params)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, describesDynamic)
-}
-
-// CreateChangesRelationship - Creates Flow -> Stock relationship with polarity
-func (h *Handler) CreateChangesRelationship(c *gin.Context) {
-	var changes models.Changes
-	if err := c.ShouldBindJSON(&changes); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Validate polarity
-	if changes.Polarity != 1.0 && changes.Polarity != -1.0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Polarity must be +1 or -1"})
-		return
-	}
-
-	query := `MATCH (f:Flow {id: $flow_id}), (st:Stock {id: $stock_id})
-			  CREATE (f)-[:CHANGES {polarity: $polarity}]->(st)`
-	params := map[string]interface{}{
-		"flow_id":  changes.FlowID,
-		"stock_id": changes.StockID,
-		"polarity": changes.Polarity,
-	}
-
-	_, err := h.db.ExecuteQuery(context.Background(), query, params)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, changes)
-}
-
-func (h *Handler) CreateCausalLink(c *gin.Context) {
-	var req models.CausalLink
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	// ... (add validation for FromType/ToType)
-
-	// Build the query to MATCH two nodes and CREATE a relationship between them
-	query := `
-        MATCH (a), (b)
-        WHERE a.id = $from_id AND b.id = $to_id
-        CREATE (a)-[r:CAUSAL_LINK {
-            question: $question,
-            curiosity_score: $curiosity_score,
-            created_at: $created_at
-        }]->(b)
-    `
-	params := map[string]interface{}{
-		"from_id":         req.FromID,
-		"to_id":           req.ToID,
-		"question":        req.Question,
-		"curiosity_score": req.CuriosityScore,
-		"created_at":      time.Now().Format(time.RFC3339),
-	}
-
-	_, err := h.db.ExecuteQuery(context.Background(), query, params)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusCreated, req) // Return the request data as confirmation
 }
 
 // AnalyzeNarrative takes a narrative ID in the request body, sends its content to an LLM for analysis,
@@ -746,7 +471,20 @@ func (h *Handler) AnalyzeNarrative(c *gin.Context) {
 		}
 	}
 
-	// --- Step 6: Final Response ---
+	// --- Step 6: Mark narrative as extrapolated ---
+	// Update the narrative to mark it as extrapolated after successful analysis
+	updateQuery := `MATCH (n:Narrative {id: $id}) 
+		SET n.extrapolated = true, n.updated_at = $updated_at`
+	updateParams := map[string]interface{}{
+		"id":         req.NarrativeID,
+		"updated_at": time.Now().Format(time.RFC3339),
+	}
+	_, err = h.db.ExecuteQuery(context.Background(), updateQuery, updateParams)
+	if err != nil {
+		log.Printf("Warning: Failed to mark narrative as extrapolated: %v", err)
+	}
+
+	// --- Step 7: Final Response ---
 	c.JSON(http.StatusOK, gin.H{
 		"message":         "Narrative analysis completed successfully",
 		"narrativeId":     req.NarrativeID,
@@ -757,24 +495,41 @@ func (h *Handler) AnalyzeNarrative(c *gin.Context) {
 }
 
 const systemInstruction = `
-	**1. Your Role and Mission**
-	You are a Cognitive Scientist specializing in knowledge modeling. Your mission is to help a friend understand their own thinking by modeling their beliefs, as revealed through their writing, into a Network of Nodes and Relationships. Your analytical framework is Systems Thinking. You see the world as a network of nested Systems, which are described by their Stocks (state variables) and dynamic interactions (Flows). Your goal is to map the writer's understanding of these systems, their parts, and their interactions into a graph database. You must remain detached and abstract. All beliefs about specific people should be generalized to describe the "Human System." You are mapping their knowledge of the world, not their personal diary.
-	**2. Core Principles of Analysis**
-	- **Principle of Abstraction**: Generalize specific anecdotes into models of broader systems (e.g., a story about a specific job becomes an analysis of the "Work-Life Balance System").
-	- **Identify the 'Container' (The System)**: Find the nouns representing a collection of interacting parts (e.g., "economy," "ecosystem," "team").
-	- **Identify 'State Variables' (The Stocks)**: Find the nouns representing accumulations or qualities that describe the system's state at a point in time (e.g., "Trust Level," "Bank Balance," "Motivation"). Classify them as 'quantitative' or 'qualitative'.
-	- **Identify 'Activities' (The Flows)**: Find the verbs or actions that cause stocks to change over time (e.g., "earning income," "building trust," "spending energy").
-	- **Pinpoint Curiosity (The Causal Link)**: This is crucial. You must identify and score the writer's curiosity about causal relationships between Stocks and/or Flows. Score 2.0 for direct questions ("I wonder if...", "?"). Score 1.0 for uncertainty ("It seems like...", "Perhaps..."). Score 0.0 for assertions without explanation.
-	**3. Function API**
-	You will call these functions to build the graph:
-	- ` + "`CreateSystemNode(name: string, boundaryDescription: string)`" + `
-	- ` + "`CreateStockNode(name: string, description: string, type: string)`" + `
-	- ` + "`CreateFlowNode(name: string, description: string)`" + `
-	- ` + "`CreateDescribesRelationship(narrativeName: string, systemName: string)`" + `
-	- ` + "`CreateConstitutesRelationship(subsystemName: string, systemName: string)`" + `
-	- ` + "`CreateDescribesStaticRelationship(stockName: string, systemName: string)`" + `
-	- ` + "`CreateChangesRelationship(flowName: string, stockName: string, polarity: float)`" + `
-	- ` + "`CreateCausalLinkRelationship(fromType: string, fromName: string, toType: string, toName: string, curiosity: string, curiosityScore: float)`" + `
+1. Your Role and Mission
+You are a Cognitive Scientist specializing in knowledge modeling. Your mission is to help a user understand their own thinking by modeling their beliefs, as revealed through their writing, into a Network of Nodes and Relationships. Your analytical framework is Systems Thinking. You see the world as a network of nested Systems, which are described by their Stocks (state variables) and dynamic interactions (Flows). Your goal is to map the writer's understanding of these systems, their parts, and their interactions into a graph database. You must remain detached and abstract, generalizing specific anecdotes into models of broader systems.
+
+2. The Cognitive Workflow
+You must follow this sequence of analysis for every narrative:
+Identify Systems: First, read the text to identify the primary containers for the narrative's dynamics. These can be concrete (Business Corporation) or abstract (Workplace Culture). Create CreateSystemNode actions and CreateConstitutesRelationship actions for any nested systems.
+Link Narrative: Create a CreateDescribesRelationship action to link the source narrative to each top-level system you identified.
+Identify Stocks: Next, identify the state variables that describe each system. These are the accumulations or qualities of the system. Create CreateStockNode actions and CreateDescribesStaticRelationship actions to link them to their parent system.
+Identify Flows: Now, identify the processes or activities that cause stocks to change. Create CreateFlowNode actions. For each flow that directly affects a stock, create a CreateChangesRelationship action, specifying the polarity (+1.0 for increase, -1.0 for decrease).
+Identify Causal Links: Finally, identify all hypothesized or uncertain connections between any two elements (Stock or Flow). For each, create a CreateCausalLinkRelationship action. You must provide a summarized curiosity question and a curiosityScore based on the following scale:
+1.0 (Direct Question): Used for explicit questions (e.g., "I wonder why...", "How does...?").
+0.5 (Uncertainty): Used for speculative statements (e.g., "It seems like...", "Perhaps...", "I think...").
+0.1 (Assertion without Mechanism): Used for statements of causality where the "how" is not explained (e.g., "X leads to Y.").
+
+3. Function API
+You will call these functions to build the graph:
+
+CreateSystemNode(name: string, boundaryDescription: string)
+
+CreateDescribesRelationship(narrativeName: string, systemName: string)
+
+CreateStockNode(name: string, description: string, type: string) (type is 'qualitative' or 'quantitative')
+
+CreateFlowNode(name: string, description: string)
+
+CreateConstitutesRelationship(subsystemName: string, systemName: string)
+
+CreateDescribesStaticRelationship(stockName: string, systemName:string)
+
+CreateChangesRelationship(flowName: string, stockName: string, polarity: float)
+
+CreateCausalLinkRelationship(fromType: string, fromName: string, toType: string, toName: string, curiosity: string, curiosityScore: float)
+
+4. Your Task & Output Format
+Your output must be a single, valid JSON object with a key named "actions". The value must be an array of objects, where each object represents a single function call with "function_name" and "parameters" keys. Do not provide any other explanatory text. Analyze the following narrative:
 	**4. Your Task**
 	Your output must be a single JSON object with a key named "actions". The value should be an array of objects, where each object represents a function call with "function_name" and "parameters" keys. Do not provide any other explanatory text. "Your output must be a single, valid JSON object. Ensure that all objects in the 'actions' array are separate and correctly formatted, with no nesting of action objects inside the parameters of other actions. The response will be parsed automatically and must be perfect." Analyze the following narrative:
 	Example valid output:
@@ -816,7 +571,7 @@ func getIDFromNameAndType(name, nodeType string, stockIDs, flowIDs map[string]st
 // These functions contain the core database logic, making them reusable.
 
 func (h *Handler) getNarrativeByIDFromDB(ctx context.Context, id string) (*models.Narrative, error) {
-	query := `MATCH (n:Narrative {id: $id}) RETURN n.id, n.title, n.content, n.created_at`
+	query := `MATCH (n:Narrative {id: $id}) RETURN n.id, n.title, n.content, n.extrapolated, n.created_at`
 	params := map[string]interface{}{"id": id}
 	records, err := h.db.ExecuteRead(ctx, query, params)
 	if err != nil {
@@ -831,6 +586,14 @@ func (h *Handler) getNarrativeByIDFromDB(ctx context.Context, id string) (*model
 		Title:   record["n.title"].(string),
 		Content: record["n.content"].(string),
 	}
+
+	// Safely handle boolean conversion for extrapolated field
+	if extrapolated, ok := record["n.extrapolated"].(bool); ok {
+		narrative.Extrapolated = extrapolated
+	} else {
+		narrative.Extrapolated = false // default value if not set
+	}
+
 	return narrative, nil
 }
 
@@ -839,13 +602,19 @@ func (h *Handler) createSystemInDB(ctx context.Context, req models.SystemRequest
 		ID:                  uuid.New().String(),
 		Name:                req.Name,
 		BoundaryDescription: req.BoundaryDescription,
+		Embedding:           []float32{}, // Empty embedding initially
+		Embedded:            false,       // No embeddings initially
+		Consolidated:        false,       // Not consolidated initially
 		CreatedAt:           time.Now(),
 	}
-	query := `CREATE (s:System {id: $id, name: $name, boundary_description: $boundary_description, created_at: $created_at})`
+	query := `CREATE (s:System {id: $id, name: $name, boundary_description: $boundary_description, embedding: $embedding, embedded: $embedded, consolidated: $consolidated, created_at: $created_at})`
 	params := map[string]interface{}{
 		"id":                   system.ID,
 		"name":                 system.Name,
 		"boundary_description": system.BoundaryDescription,
+		"embedding":            system.Embedding,
+		"embedded":             system.Embedded,
+		"consolidated":         system.Consolidated,
 		"created_at":           system.CreatedAt.Format(time.RFC3339),
 	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
@@ -854,19 +623,25 @@ func (h *Handler) createSystemInDB(ctx context.Context, req models.SystemRequest
 
 func (h *Handler) createStockInDB(ctx context.Context, req models.StockRequest) (*models.Stock, error) {
 	stock := &models.Stock{
-		ID:          uuid.New().String(),
-		Name:        req.Name,
-		Description: req.Description,
-		Type:        req.Type,
-		CreatedAt:   time.Now(),
+		ID:           uuid.New().String(),
+		Name:         req.Name,
+		Description:  req.Description,
+		Type:         req.Type,
+		Embedding:    []float32{}, // Empty embedding initially
+		Embedded:     false,       // No embeddings initially
+		Consolidated: false,       // Not consolidated initially
+		CreatedAt:    time.Now(),
 	}
-	query := `CREATE (st:Stock {id: $id, name: $name, description: $description, type: $type, created_at: $created_at})`
+	query := `CREATE (st:Stock {id: $id, name: $name, description: $description, type: $type, embedding: $embedding, embedded: $embedded, consolidated: $consolidated, created_at: $created_at})`
 	params := map[string]interface{}{
-		"id":          stock.ID,
-		"name":        stock.Name,
-		"description": stock.Description,
-		"type":        stock.Type,
-		"created_at":  stock.CreatedAt.Format(time.RFC3339),
+		"id":           stock.ID,
+		"name":         stock.Name,
+		"description":  stock.Description,
+		"type":         stock.Type,
+		"embedding":    stock.Embedding,
+		"embedded":     stock.Embedded,
+		"consolidated": stock.Consolidated,
+		"created_at":   stock.CreatedAt.Format(time.RFC3339),
 	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
 	return stock, err
@@ -874,57 +649,91 @@ func (h *Handler) createStockInDB(ctx context.Context, req models.StockRequest) 
 
 func (h *Handler) createFlowInDB(ctx context.Context, req models.FlowRequest) (*models.Flow, error) {
 	flow := &models.Flow{
-		ID:          uuid.New().String(),
-		Name:        req.Name,
-		Description: req.Description,
-		CreatedAt:   time.Now(),
+		ID:           uuid.New().String(),
+		Name:         req.Name,
+		Description:  req.Description,
+		Embedding:    []float32{}, // Empty embedding initially
+		Embedded:     false,       // No embeddings initially
+		Consolidated: false,       // Not consolidated initially
+		CreatedAt:    time.Now(),
 	}
-	query := `CREATE (f:Flow {id: $id, name: $name, description: $description, created_at: $created_at})`
+	query := `CREATE (f:Flow {id: $id, name: $name, description: $description, embedding: $embedding, embedded: $embedded, consolidated: $consolidated, created_at: $created_at})`
 	params := map[string]interface{}{
-		"id":          flow.ID,
-		"name":        flow.Name,
-		"description": flow.Description,
-		"created_at":  flow.CreatedAt.Format(time.RFC3339),
+		"id":           flow.ID,
+		"name":         flow.Name,
+		"description":  flow.Description,
+		"embedding":    flow.Embedding,
+		"embedded":     flow.Embedded,
+		"consolidated": flow.Consolidated,
+		"created_at":   flow.CreatedAt.Format(time.RFC3339),
 	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
 	return flow, err
 }
 
 func (h *Handler) createDescribesRelationshipInDB(ctx context.Context, narrativeID, systemID string) error {
-	query := `MATCH (n:Narrative {id: $narrative_id}), (s:System {id: $system_id}) CREATE (n)-[:DESCRIBES]->(s)`
-	params := map[string]interface{}{"narrative_id": narrativeID, "system_id": systemID}
+	query := `MATCH (n:Narrative {id: $narrative_id}), (s:System {id: $system_id}) 
+		CREATE (n)-[:DESCRIBES {consolidated: $consolidated}]->(s)`
+	params := map[string]interface{}{
+		"narrative_id": narrativeID,
+		"system_id":    systemID,
+		"consolidated": false,
+	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
 	return err
 }
 
 func (h *Handler) createConstitutesRelationshipInDB(ctx context.Context, subsystemID, systemID string) error {
-	query := `MATCH (sub:System {id: $subsystem_id}), (sys:System {id: $system_id}) CREATE (sub)-[:CONSTITUTES]->(sys)`
-	params := map[string]interface{}{"subsystem_id": subsystemID, "system_id": systemID}
+	query := `MATCH (sub:System {id: $subsystem_id}), (sys:System {id: $system_id}) 
+		CREATE (sub)-[:CONSTITUTES {consolidated: $consolidated}]->(sys)`
+	params := map[string]interface{}{
+		"subsystem_id": subsystemID,
+		"system_id":    systemID,
+		"consolidated": false,
+	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
 	return err
 }
 
 func (h *Handler) createDescribesStaticRelationshipInDB(ctx context.Context, stockID, systemID string) error {
-	query := `MATCH (st:Stock {id: $stock_id}), (s:System {id: $system_id}) CREATE (st)-[:DESCRIBES_STATIC]->(s)`
-	params := map[string]interface{}{"stock_id": stockID, "system_id": systemID}
+	query := `MATCH (st:Stock {id: $stock_id}), (s:System {id: $system_id}) 
+		CREATE (st)-[:DESCRIBES_STATIC {consolidated: $consolidated}]->(s)`
+	params := map[string]interface{}{
+		"stock_id":     stockID,
+		"system_id":    systemID,
+		"consolidated": false,
+	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
 	return err
 }
 
 func (h *Handler) createChangesRelationshipInDB(ctx context.Context, flowID, stockID string, polarity float32) error {
-	query := `MATCH (f:Flow {id: $flow_id}), (st:Stock {id: $stock_id}) CREATE (f)-[:CHANGES {polarity: $polarity}]->(st)`
-	params := map[string]interface{}{"flow_id": flowID, "stock_id": stockID, "polarity": polarity}
+	query := `MATCH (f:Flow {id: $flow_id}), (st:Stock {id: $stock_id}) 
+		CREATE (f)-[:CHANGES {polarity: $polarity, consolidated: $consolidated}]->(st)`
+	params := map[string]interface{}{
+		"flow_id":      flowID,
+		"stock_id":     stockID,
+		"polarity":     polarity,
+		"consolidated": false,
+	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
 	return err
 }
 
 func (h *Handler) createCausalLinkInDB(ctx context.Context, req models.CausalLink) error {
-	query := `MATCH (a), (b) WHERE a.id = $from_id AND b.id = $to_id CREATE (a)-[r:CAUSAL_LINK {question: $question, curiosity_score: $curiosity_score, created_at: $created_at}]->(b)`
+	query := `MATCH (a), (b) WHERE a.id = $from_id AND b.id = $to_id 
+		CREATE (a)-[r:CAUSAL_LINK {
+			question: $question, 
+			curiosity_score: $curiosity_score, 
+			consolidated: $consolidated,
+			created_at: $created_at
+		}]->(b)`
 	params := map[string]interface{}{
 		"from_id":         req.FromID,
 		"to_id":           req.ToID,
 		"question":        req.Question,
 		"curiosity_score": req.CuriosityScore,
+		"consolidated":    false,
 		"created_at":      time.Now().Format(time.RFC3339),
 	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
@@ -990,4 +799,16 @@ func (h *Handler) CleanNonNarrativeData(c *gin.Context) {
 		"nodes_deleted":        nodesToDelete,
 		"narratives_preserved": narrativesRemaining,
 	})
+}
+
+// ProcessEmbeddings - Processes embeddings for all unconsolidated nodes in batch
+func (h *Handler) ProcessEmbeddings(c *gin.Context) {
+	err := h.processNodeEmbeddingsInBatch(c.Request.Context())
+	if err != nil {
+		log.Printf("Error processing embeddings: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process embeddings: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Successfully processed embeddings for all unconsolidated nodes"})
 }

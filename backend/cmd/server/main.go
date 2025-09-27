@@ -66,27 +66,11 @@ func main() {
 			narratives.POST("/analyze", h.AnalyzeNarrative)
 		}
 
-		// Node Creation Endpoints (Manual)
-		nodes := api.Group("/nodes")
-		{
-			nodes.POST("/systems", h.CreateSystemNode)
-			nodes.POST("/stocks", h.CreateStock)
-			nodes.POST("/flows", h.CreateFlow)
-		}
-
-		// Relationship Creation Endpoints (Manual)
-		relationships := api.Group("/relationships")
-		{
-			relationships.POST("/describes", h.CreateDescribesRelationship)
-			relationships.POST("/constitutes", h.CreateConstitutesRelationship)
-			relationships.POST("/describes-static", h.CreateDescribesStaticRelationship)
-			relationships.POST("/describes-dynamic", h.CreateDescribesDynamicRelationship)
-			relationships.POST("/changes", h.CreateChangesRelationship)
-			relationships.POST("/causal-link", h.CreateCausalLink)
-		}
-
 		// Utility Endpoint to clean the graph
 		api.POST("/clean", h.CleanNonNarrativeData)
+
+		// Utility Endpoint to process embeddings for all unconsolidated nodes
+		api.POST("/embeddings", h.ProcessEmbeddings)
 	}
 
 	port := os.Getenv("PORT")
