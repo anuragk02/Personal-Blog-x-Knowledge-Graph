@@ -529,22 +529,20 @@ CreateChangesRelationship(flowName: string, stockName: string, polarity: float)
 CreateCausalLinkRelationship(fromType: string, fromName: string, toType: string, toName: string, curiosity: string, curiosityScore: float)
 
 4. Your Task & Output Format
-Your output must be a single, valid JSON object with a key named "actions". The value must be an array of objects, where each object represents a single function call with "function_name" and "parameters" keys. Do not provide any other explanatory text. Analyze the following narrative:
-	**4. Your Task**
-	Your output must be a single JSON object with a key named "actions". The value should be an array of objects, where each object represents a function call with "function_name" and "parameters" keys. Do not provide any other explanatory text. "Your output must be a single, valid JSON object. Ensure that all objects in the 'actions' array are separate and correctly formatted, with no nesting of action objects inside the parameters of other actions. The response will be parsed automatically and must be perfect." Analyze the following narrative:
-	Example valid output:
-	{
-		"actions": [
-			{
-  				"function_name": "CreateSystemNode",
-  				"parameters": { "name": "System A", "boundaryDescription": "..." }
-			},
-			{
-  				"function_name": "CreateStockNode",
-  				"parameters": { "name": "Stock B", "description": "...", "type": "qualitative" }
-			}
-  		]
-	}`
+Your output must be a single JSON object with a key named "actions". The value should be an array of objects, where each object represents a function call with "function_name" and "parameters" keys. Do not provide any other explanatory text. "Your output must be a single, valid JSON object. Ensure that all objects in the 'actions' array are separate and correctly formatted, with no nesting of action objects inside the parameters of other actions. The response will be parsed automatically and must be perfect." Analyze the following narrative:
+Example valid output:
+{
+	"actions": [
+		{
+			"function_name": "CreateSystemNode",
+			"parameters": { "name": "System A", "boundaryDescription": "..." }
+		},
+		{
+			"function_name": "CreateStockNode",
+			"parameters": { "name": "Stock B", "description": "...", "type": "qualitative" }
+		}
+	]
+}`
 
 const userPromptTemplate = `
 	Narrative Title: %s
@@ -605,9 +603,19 @@ func (h *Handler) createSystemInDB(ctx context.Context, req models.SystemRequest
 		Embedding:           []float32{}, // Empty embedding initially
 		Embedded:            false,       // No embeddings initially
 		Consolidated:        false,       // Not consolidated initially
+		ConsolidationScore:  0,           // No consolidations yet
 		CreatedAt:           time.Now(),
 	}
-	query := `CREATE (s:System {id: $id, name: $name, boundary_description: $boundary_description, embedding: $embedding, embedded: $embedded, consolidated: $consolidated, created_at: $created_at})`
+	query := `CREATE (s:System {
+		id: $id, 
+		name: $name, 
+		boundary_description: $boundary_description, 
+		embedding: $embedding, 
+		embedded: $embedded, 
+		consolidated: $consolidated,
+		consolidation_score: $consolidation_score,
+		created_at: $created_at
+	})`
 	params := map[string]interface{}{
 		"id":                   system.ID,
 		"name":                 system.Name,
@@ -615,6 +623,7 @@ func (h *Handler) createSystemInDB(ctx context.Context, req models.SystemRequest
 		"embedding":            system.Embedding,
 		"embedded":             system.Embedded,
 		"consolidated":         system.Consolidated,
+		"consolidation_score":  system.ConsolidationScore,
 		"created_at":           system.CreatedAt.Format(time.RFC3339),
 	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
@@ -623,25 +632,37 @@ func (h *Handler) createSystemInDB(ctx context.Context, req models.SystemRequest
 
 func (h *Handler) createStockInDB(ctx context.Context, req models.StockRequest) (*models.Stock, error) {
 	stock := &models.Stock{
-		ID:           uuid.New().String(),
-		Name:         req.Name,
-		Description:  req.Description,
-		Type:         req.Type,
-		Embedding:    []float32{}, // Empty embedding initially
-		Embedded:     false,       // No embeddings initially
-		Consolidated: false,       // Not consolidated initially
-		CreatedAt:    time.Now(),
+		ID:                 uuid.New().String(),
+		Name:               req.Name,
+		Description:        req.Description,
+		Type:               req.Type,
+		Embedding:          []float32{}, // Empty embedding initially
+		Embedded:           false,       // No embeddings initially
+		Consolidated:       false,       // Not consolidated initially
+		ConsolidationScore: 0,           // No consolidations yet
+		CreatedAt:          time.Now(),
 	}
-	query := `CREATE (st:Stock {id: $id, name: $name, description: $description, type: $type, embedding: $embedding, embedded: $embedded, consolidated: $consolidated, created_at: $created_at})`
+	query := `CREATE (st:Stock {
+		id: $id, 
+		name: $name, 
+		description: $description, 
+		type: $type, 
+		embedding: $embedding, 
+		embedded: $embedded, 
+		consolidated: $consolidated,
+		consolidation_score: $consolidation_score,
+		created_at: $created_at
+	})`
 	params := map[string]interface{}{
-		"id":           stock.ID,
-		"name":         stock.Name,
-		"description":  stock.Description,
-		"type":         stock.Type,
-		"embedding":    stock.Embedding,
-		"embedded":     stock.Embedded,
-		"consolidated": stock.Consolidated,
-		"created_at":   stock.CreatedAt.Format(time.RFC3339),
+		"id":                  stock.ID,
+		"name":                stock.Name,
+		"description":         stock.Description,
+		"type":                stock.Type,
+		"embedding":           stock.Embedding,
+		"embedded":            stock.Embedded,
+		"consolidated":        stock.Consolidated,
+		"consolidation_score": stock.ConsolidationScore,
+		"created_at":          stock.CreatedAt.Format(time.RFC3339),
 	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
 	return stock, err
@@ -649,23 +670,34 @@ func (h *Handler) createStockInDB(ctx context.Context, req models.StockRequest) 
 
 func (h *Handler) createFlowInDB(ctx context.Context, req models.FlowRequest) (*models.Flow, error) {
 	flow := &models.Flow{
-		ID:           uuid.New().String(),
-		Name:         req.Name,
-		Description:  req.Description,
-		Embedding:    []float32{}, // Empty embedding initially
-		Embedded:     false,       // No embeddings initially
-		Consolidated: false,       // Not consolidated initially
-		CreatedAt:    time.Now(),
+		ID:                 uuid.New().String(),
+		Name:               req.Name,
+		Description:        req.Description,
+		Embedding:          []float32{}, // Empty embedding initially
+		Embedded:           false,       // No embeddings initially
+		Consolidated:       false,       // Not consolidated initially
+		ConsolidationScore: 0,           // No consolidations yet
+		CreatedAt:          time.Now(),
 	}
-	query := `CREATE (f:Flow {id: $id, name: $name, description: $description, embedding: $embedding, embedded: $embedded, consolidated: $consolidated, created_at: $created_at})`
+	query := `CREATE (f:Flow {
+		id: $id, 
+		name: $name, 
+		description: $description, 
+		embedding: $embedding, 
+		embedded: $embedded, 
+		consolidated: $consolidated,
+		consolidation_score: $consolidation_score,
+		created_at: $created_at
+	})`
 	params := map[string]interface{}{
-		"id":           flow.ID,
-		"name":         flow.Name,
-		"description":  flow.Description,
-		"embedding":    flow.Embedding,
-		"embedded":     flow.Embedded,
-		"consolidated": flow.Consolidated,
-		"created_at":   flow.CreatedAt.Format(time.RFC3339),
+		"id":                  flow.ID,
+		"name":                flow.Name,
+		"description":         flow.Description,
+		"embedding":           flow.Embedding,
+		"embedded":            flow.Embedded,
+		"consolidated":        flow.Consolidated,
+		"consolidation_score": flow.ConsolidationScore,
+		"created_at":          flow.CreatedAt.Format(time.RFC3339),
 	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
 	return flow, err
@@ -673,11 +705,12 @@ func (h *Handler) createFlowInDB(ctx context.Context, req models.FlowRequest) (*
 
 func (h *Handler) createDescribesRelationshipInDB(ctx context.Context, narrativeID, systemID string) error {
 	query := `MATCH (n:Narrative {id: $narrative_id}), (s:System {id: $system_id}) 
-		CREATE (n)-[:DESCRIBES {consolidated: $consolidated}]->(s)`
+		CREATE (n)-[:DESCRIBES {consolidated: $consolidated, consolidation_score: $consolidation_score}]->(s)`
 	params := map[string]interface{}{
-		"narrative_id": narrativeID,
-		"system_id":    systemID,
-		"consolidated": false,
+		"narrative_id":        narrativeID,
+		"system_id":           systemID,
+		"consolidated":        false,
+		"consolidation_score": 0,
 	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
 	return err
@@ -685,11 +718,12 @@ func (h *Handler) createDescribesRelationshipInDB(ctx context.Context, narrative
 
 func (h *Handler) createConstitutesRelationshipInDB(ctx context.Context, subsystemID, systemID string) error {
 	query := `MATCH (sub:System {id: $subsystem_id}), (sys:System {id: $system_id}) 
-		CREATE (sub)-[:CONSTITUTES {consolidated: $consolidated}]->(sys)`
+		CREATE (sub)-[:CONSTITUTES {consolidated: $consolidated, consolidation_score: $consolidation_score}]->(sys)`
 	params := map[string]interface{}{
-		"subsystem_id": subsystemID,
-		"system_id":    systemID,
-		"consolidated": false,
+		"subsystem_id":        subsystemID,
+		"system_id":           systemID,
+		"consolidated":        false,
+		"consolidation_score": 0,
 	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
 	return err
@@ -697,11 +731,12 @@ func (h *Handler) createConstitutesRelationshipInDB(ctx context.Context, subsyst
 
 func (h *Handler) createDescribesStaticRelationshipInDB(ctx context.Context, stockID, systemID string) error {
 	query := `MATCH (st:Stock {id: $stock_id}), (s:System {id: $system_id}) 
-		CREATE (st)-[:DESCRIBES_STATIC {consolidated: $consolidated}]->(s)`
+		CREATE (st)-[:DESCRIBES_STATIC {consolidated: $consolidated, consolidation_score: $consolidation_score}]->(s)`
 	params := map[string]interface{}{
-		"stock_id":     stockID,
-		"system_id":    systemID,
-		"consolidated": false,
+		"stock_id":            stockID,
+		"system_id":           systemID,
+		"consolidated":        false,
+		"consolidation_score": 0,
 	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
 	return err
@@ -709,12 +744,13 @@ func (h *Handler) createDescribesStaticRelationshipInDB(ctx context.Context, sto
 
 func (h *Handler) createChangesRelationshipInDB(ctx context.Context, flowID, stockID string, polarity float32) error {
 	query := `MATCH (f:Flow {id: $flow_id}), (st:Stock {id: $stock_id}) 
-		CREATE (f)-[:CHANGES {polarity: $polarity, consolidated: $consolidated}]->(st)`
+		CREATE (f)-[:CHANGES {polarity: $polarity, consolidated: $consolidated, consolidation_score: $consolidation_score}]->(st)`
 	params := map[string]interface{}{
-		"flow_id":      flowID,
-		"stock_id":     stockID,
-		"polarity":     polarity,
-		"consolidated": false,
+		"flow_id":             flowID,
+		"stock_id":            stockID,
+		"polarity":            polarity,
+		"consolidated":        false,
+		"consolidation_score": 0,
 	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
 	return err
@@ -726,15 +762,17 @@ func (h *Handler) createCausalLinkInDB(ctx context.Context, req models.CausalLin
 			question: $question, 
 			curiosity_score: $curiosity_score, 
 			consolidated: $consolidated,
+			consolidation_score: $consolidation_score,
 			created_at: $created_at
 		}]->(b)`
 	params := map[string]interface{}{
-		"from_id":         req.FromID,
-		"to_id":           req.ToID,
-		"question":        req.Question,
-		"curiosity_score": req.CuriosityScore,
-		"consolidated":    false,
-		"created_at":      time.Now().Format(time.RFC3339),
+		"from_id":             req.FromID,
+		"to_id":               req.ToID,
+		"question":            req.Question,
+		"curiosity_score":     req.CuriosityScore,
+		"consolidated":        false,
+		"consolidation_score": 0,
+		"created_at":          time.Now().Format(time.RFC3339),
 	}
 	_, err := h.db.ExecuteQuery(ctx, query, params)
 	return err

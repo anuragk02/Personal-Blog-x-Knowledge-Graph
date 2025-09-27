@@ -1,0 +1,116 @@
+Now I want to create a Consolidation workflow, I will describe the process and you can create a plan to build a handler and implementation to trigger this entire flow.
+1. We collect all unconsolidated Nodes except narratives with embeddings. If no embeddings they will be left out of this process.
+2. We need to calculate cosine similarity between unconsolidated nodes and consolidated nodes of the same types. Systems with Systems, Stocks with Stocks and Flows with Flows. and Create a list of object called NodeMatches, These objects will contain the Node type, consolidated node id and unconsolidated node id. 
+3. Using this Map, we will update the Consolidated Nodes, if any to take a weighted average based on consolidationScore of the Node, consolidationScore will be the weight of consolidated embeddings and 1 will be the weight for unconsolidated embeddings. WE will then update the Consolidation score to increment by 1 and set a LastConsolidatedAt date. I also want to call gemini to synthesize a new name at the time of consolidation, maybe we can do that ahead of the update to the consolidated node, right after we have created the map, and store the new synthesized name. Leave some space for this new Name and Description generation to cover both the old and new node. 
+4. Unconsolidated Relationships: To consolidate relationships, we will find all unconsolidated relationships, create a list of objects with each object containing type, from_id and to_id, for all relationships except causal links, the from and two ids then will be updated using the Map of Consolidated and unconsolidated nodes, this way now we have a way to create new relationships between the consolidated nodes, Now if a relationship already exists, we simply increment the consolidation score for relationships which is missing in the models and should be added and set to 0 for unconsolidated relationships. If the relationship doesn't exist, we create a new relationship with consolidated bool set to true and consolidation score 1. 
+5. Next we handle Unconsolidated Causal Links: WE create a list of objects again first of all the unconsolidated causal links with all their properties, then we look at the NodeMatches to find the consolidated node IDs and Create the causal Link over there if it does not exist, again with the consolidated bool true in this causal link with the same properties as the unconsolidated one except the node ids. Then we delete all the unconsolidated nodes and relationships from our graph. Note that the first time I run this, there will be no consolidated nodes in the Graph, so the functionality should handle this case. There are a lot of things I need to think about while implementing this actually, like what if I have analysed and fetched embedings for 3 different narratives and now when I run the pipeline for each node in a loop, it should work fine and same for the relationship, I think it might cause a slight issue because each consolidation will change the consolidated graph and that might affect embeddings and similarity scores as an effect. Help me Solidify this process for robustness.
+
+Phase 1: Solidifying the Plan & Data Model
+Before we write the handler, we need to update our foundation. The graph needs to be able to distinguish between consolidated and unconsolidated entities.
+
+Action 1: Update Go Data Models (models.go)
+We need to add a few fields to your node and relationship structs to track their consolidation state.
+
+This provides a clear entry point for a cron job or a manual trigger.
+
+Phase 2: The Consolidation Workflow Plan
+Here is a robust, step-by-step plan for the ConsolidateGraph handler. This plan is designed to be transactional and handle the edge case of the first run.
+
+ConsolidateGraph Handler Implementation Plan
+This handler will be a long-running, multi-step process. It should be designed to be idempotent, meaning running it multiple times on the same data won't produce duplicate results.
+
+Step 1: Fetch All Nodes
+
+Query: Fetch all System, Stock, and Flow nodes from the graph.
+
+Logic: Separate them into two lists for each type: unconsolidatedNodes (consolidated = false) and consolidatedNodes (consolidated = true).
+
+Edge Case: If consolidatedNodes is empty (the very first run), the workflow will be simpler: it will promote the first batch of unconsolidated nodes to be the initial consolidated set.
+
+Step 2: Find Node Matches (The Core Logic)
+
+If first run:
+
+Logic: For each unconsolidated node, mark it as the first consolidated version of itself. NodeMatches will be a list where unconsolidated_id is the same as consolidated_id.
+
+If not first run:
+
+Logic: For each unconsolidatedNode:
+
+Calculate the cosine similarity of its embedding against all consolidatedNodes of the same type.
+
+Find the consolidated node with the highest similarity score.
+
+If this score is above a predefined threshold (e.g., 0.85), create a NodeMatch object: { unconsolidated_id: "...", consolidated_id: "..." }.
+
+If no match is found above the threshold, this unconsolidated node is a new, unique concept. It will be promoted to a consolidated node later.
+
+Step 3: Synthesize New Names & Descriptions
+
+Logic: For each NodeMatch where an unconsolidated node is merging into an existing consolidated one:
+
+Get the name and description of both nodes.
+
+Construct a prompt for Gemini: "Synthesize a new, concise name and a comprehensive description that accurately combines the concepts of [Node A name: description] and [Node B name: description]."
+
+Call the Gemini API.
+
+Store the result temporarily, associated with the consolidated_id.
+
+Step 4: Consolidate Nodes (Transaction 1)
+
+Logic: Iterate through all nodes.
+
+For each NodeMatch:
+
+Fetch the two nodes.
+
+Calculate the weighted average of their embeddings.
+
+Execute a Cypher query to MATCH the consolidated node and SET its properties:
+
+embedding = new weighted average.
+
+name = new synthesized name (from Step 3).
+
+description = new synthesized description.
+
+consolidation_score = consolidation_score + 1.
+
+last_consolidated_at = datetime().
+
+For each unconsolidated node that did not find a match:
+
+Execute a Cypher query to MATCH the node and SET its properties:
+
+consolidated = true.
+
+consolidation_score = 1.
+
+last_consolidated_at = datetime().
+
+Step 5: Consolidate Relationships (Transaction 2)
+
+Query: Fetch all relationships (CHANGES, CAUSAL_LINK, etc.) connected to at least one unconsolidated node.
+
+Logic: For each fetched relationship:
+
+Determine its from and to nodes.
+
+Use the NodeMatches map to find the new consolidated_from_id and consolidated_to_id.
+
+Execute a Cypher MERGE query. MERGE is perfect here because it will create the relationship if it doesn't exist or match it if it does.
+
+On CREATE (it's a new relationship), set consolidation_score = 1.
+
+On MATCH (it's a duplicate relationship), SET r.consolidation_score = r.consolidation_score + 1.
+
+For CAUSAL_LINK, you will also need to handle merging the question property, perhaps by appending new questions to a list.
+
+Step 6: Cleanup (Transaction 3)
+
+Query: MATCH (n) WHERE n.consolidated = false DETACH DELETE n.
+
+Logic: This single query will delete all remaining unconsolidated nodes and any relationships that were only connected to them. This cleans the graph, leaving it ready for the next batch of narratives.
+
+This detailed plan provides a robust and scalable workflow for your consolidation process. By breaking it into clear, transactional steps, you can ensure data integrity and handle the complexities of an evolving knowledge graph.

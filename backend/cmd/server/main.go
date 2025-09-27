@@ -71,6 +71,21 @@ func main() {
 
 		// Utility Endpoint to process embeddings for all unconsolidated nodes
 		api.POST("/embeddings", h.ProcessEmbeddings)
+
+		// Consolidation Endpoint - Main workflow for consolidating the graph
+		api.POST("/consolidate", h.ConsolidateGraph)
+
+		// Reset Consolidation - Reset all nodes to unconsolidated status
+		api.POST("/consolidate/reset", h.ResetConsolidation)
+
+		// Debug Endpoint - Test similarity between two nodes
+		api.GET("/debug/similarity", h.DebugSimilarity)
+
+		// Debug Endpoint - Check relationships for a specific node
+		api.GET("/debug/relationships", h.DebugNodeRelationships)
+
+		// Debug Endpoint - Test name synthesis between two nodes
+		api.GET("/debug/synthesis", h.DebugSynthesis)
 	}
 
 	port := os.Getenv("PORT")
