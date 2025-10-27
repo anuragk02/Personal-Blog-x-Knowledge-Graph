@@ -306,14 +306,23 @@ func (h *Handler) synthesizeNamesAndDescriptions(ctx context.Context, nodeMatche
 		}
 
 		// Create synthesis prompt
-		systemPrompt := "You are an expert in systems thinking and knowledge synthesis. Your task is to combine two related concepts into a single, coherent name and description."
+		systemPrompt := "You are a Systems Analyst specializing in knowledge model normalization. Your task is to synthesize two similar concepts into a single, more universal concept. You must create a new formal name, a universal formal concept, and a concise, objective description that accurately represents both parent concepts."
 
-		userPrompt := fmt.Sprintf(`Synthesize a new, concise name and a comprehensive description that accurately combines the concepts of these two %s nodes:
+		userPrompt := fmt.Sprintf(`Your task is to synthesize the following two similar '%s' nodes into a single, more universal concept that gracefully merges their meaning.
 
-Node A - Name: %s, Description: %s
-Node B - Name: %s, Description: %s
+**Node A (Existing Consolidated Node):**
+- Name: "%s"
+- Description: "%s"
 
-Please provide the response in this exact JSON format:
+**Node B (New Unconsolidated Node):**
+- Name: "%s"
+- Description: "%s"
+
+**Instructions:**
+1.  **Synthesize Name:** Create a new, objective, and timeless name.
+2.  **Synthesize Description:** Create a new description, under 15 words, that defines the component's objective function.
+
+Provide the response in this exact JSON format, with no other text:
 {
   "name": "[new synthesized name]",
   "description": "[new synthesized description]"
@@ -748,76 +757,151 @@ func (h *Handler) calculateWeightedAverageEmbedding(embedding1 []float32, weight
 func (h *Handler) fetchUnconsolidatedRelationships(ctx context.Context) ([]models.RelationshipConsolidation, error) {
 	var relationships []models.RelationshipConsolidation
 
-	// Fetch DESCRIBES relationships
-	describesQuery := `MATCH (n:Narrative)-[r:DESCRIBES]->(s:System) 
-		WHERE r.consolidated = false 
-		RETURN 'DESCRIBES' as type, n.id as from_id, s.id as to_id`
-	records, err := h.db.ExecuteRead(ctx, describesQuery, nil)
+	// First, dynamically discover all relationship types that need consolidation
+	discoveryQuery := `
+		MATCH ()-[r]->()
+		WHERE r.consolidated = false OR r.consolidated IS NULL
+		RETURN DISTINCT type(r) as rel_type
+	`
+
+	typeRecords, err := h.db.ExecuteRead(ctx, discoveryQuery, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch DESCRIBES relationships: %v", err)
-	}
-	for _, record := range records {
-		relationships = append(relationships, models.RelationshipConsolidation{
-			RelationType: record["type"].(string),
-			FromID:       record["from_id"].(string),
-			ToID:         record["to_id"].(string),
-		})
+		log.Printf("Warning: Could not discover relationship types dynamically: %v", err)
+		// Fallback to actual relationship types in your graph
+		typeRecords = []map[string]interface{}{
+			{"rel_type": "DESCRIBES"},
+			{"rel_type": "DESCRIBES_STATIC"},
+			{"rel_type": "CAUSAL_LINK"},
+			{"rel_type": "CHANGES"},
+		}
 	}
 
-	// Fetch CONSTITUTES relationships
-	constitutesQuery := `MATCH (sub:System)-[r:CONSTITUTES]->(sys:System) 
-		WHERE r.consolidated = false 
-		RETURN 'CONSTITUTES' as type, sub.id as from_id, sys.id as to_id`
-	records, err = h.db.ExecuteRead(ctx, constitutesQuery, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch CONSTITUTES relationships: %v", err)
-	}
-	for _, record := range records {
-		relationships = append(relationships, models.RelationshipConsolidation{
-			RelationType: record["type"].(string),
-			FromID:       record["from_id"].(string),
-			ToID:         record["to_id"].(string),
-		})
+	// Process each relationship type found
+	for _, typeRecord := range typeRecords {
+		relType := typeRecord["rel_type"].(string)
+
+		// Generic query to get all relationships of this type
+		query := fmt.Sprintf(`
+			MATCH (from)-[r:%s]->(to)
+			WHERE r.consolidated = false OR r.consolidated IS NULL
+			RETURN '%s' as type, from.id as from_id, to.id as to_id
+		`, relType, relType)
+
+		records, err := h.db.ExecuteRead(ctx, query, nil)
+		if err != nil {
+			log.Printf("Warning: Failed to fetch %s relationships: %v", relType, err)
+			continue
+		}
+
+		for _, record := range records {
+			relationships = append(relationships, models.RelationshipConsolidation{
+				RelationType: record["type"].(string),
+				FromID:       record["from_id"].(string),
+				ToID:         record["to_id"].(string),
+			})
+		}
+
+		log.Printf("Found %d unconsolidated %s relationships", len(records), relType)
 	}
 
+	log.Printf("Total unconsolidated relationships found: %d", len(relationships))
 	return relationships, nil
 }
 
 func (h *Handler) processRelationshipConsolidation(ctx context.Context, rel models.RelationshipConsolidation, nodeMapping map[string]string) error {
-	// Map from/to IDs to consolidated versions
+	// Map from/to IDs to consolidated versions (if they exist in mapping)
 	consolidatedFrom := rel.FromID
 	consolidatedTo := rel.ToID
 
+	// Check if nodes were consolidated (either merged or promoted)
+	fromWasConsolidated := false
+	toWasConsolidated := false
+
 	if mappedFrom, exists := nodeMapping[rel.FromID]; exists {
 		consolidatedFrom = mappedFrom
+		fromWasConsolidated = true
 	}
 	if mappedTo, exists := nodeMapping[rel.ToID]; exists {
 		consolidatedTo = mappedTo
+		toWasConsolidated = true
 	}
 
-	// Use MERGE to either create new relationship or increment consolidation score
-	var query string
-	switch rel.RelationType {
-	case "DESCRIBES":
-		query = `MATCH (n:Narrative {id: $from_id}), (s:System {id: $to_id})
-			MERGE (n)-[r:DESCRIBES]->(s)
-			ON CREATE SET r.consolidated = true, r.consolidation_score = 1
-			ON MATCH SET r.consolidation_score = r.consolidation_score + 1`
-	case "CONSTITUTES":
-		query = `MATCH (sub:System {id: $from_id}), (sys:System {id: $to_id})
-			MERGE (sub)-[r:CONSTITUTES]->(sys)
-			ON CREATE SET r.consolidated = true, r.consolidation_score = 1
-			ON MATCH SET r.consolidation_score = r.consolidation_score + 1`
-	default:
-		return fmt.Errorf("unsupported relationship type: %s", rel.RelationType)
+	log.Printf("Processing %s relationship: %s -> %s (originally %s -> %s)",
+		rel.RelationType, consolidatedFrom, consolidatedTo, rel.FromID, rel.ToID)
+
+	// Case 1: Neither node was consolidated (e.g., both are Narratives, or other non-consolidating types)
+	// Just mark the existing relationship as consolidated
+	if !fromWasConsolidated && !toWasConsolidated {
+		query := fmt.Sprintf(`
+			MATCH (from {id: $from_id})-[r:%s]->(to {id: $to_id})
+			SET r.consolidated = true, r.consolidation_score = 1
+		`, rel.RelationType)
+
+		params := map[string]interface{}{
+			"from_id": rel.FromID,
+			"to_id":   rel.ToID,
+		}
+
+		_, err := h.db.ExecuteQuery(ctx, query, params)
+		return err
 	}
 
-	params := map[string]interface{}{
-		"from_id": consolidatedFrom,
-		"to_id":   consolidatedTo,
+	// Case 2: At least one node was consolidated
+	// Create/update consolidated relationship and delete the old unconsolidated one
+
+	// First, create or update the consolidated relationship
+	mergeQuery := fmt.Sprintf(`
+		MATCH (from {id: $consolidated_from_id}), (to {id: $consolidated_to_id})
+		MERGE (from)-[r:%s]->(to)
+		ON CREATE SET r.consolidated = true, r.consolidation_score = 1
+		ON MATCH SET r.consolidated = true, r.consolidation_score = COALESCE(r.consolidation_score, 0) + 1
+	`, rel.RelationType)
+
+	mergeParams := map[string]interface{}{
+		"consolidated_from_id": consolidatedFrom,
+		"consolidated_to_id":   consolidatedTo,
 	}
 
-	_, err := h.db.ExecuteQuery(ctx, query, params)
+	_, err := h.db.ExecuteQuery(ctx, mergeQuery, mergeParams)
+	if err != nil {
+		log.Printf("Failed to create/update consolidated %s relationship: %v", rel.RelationType, err)
+		return err
+	}
+
+	// Second, delete the old unconsolidated relationship (only if nodes actually changed)
+	if consolidatedFrom != rel.FromID || consolidatedTo != rel.ToID {
+		deleteQuery := fmt.Sprintf(`
+			MATCH (from {id: $original_from_id})-[r:%s]->(to {id: $original_to_id})
+			DELETE r
+		`, rel.RelationType)
+
+		deleteParams := map[string]interface{}{
+			"original_from_id": rel.FromID,
+			"original_to_id":   rel.ToID,
+		}
+
+		_, err = h.db.ExecuteQuery(ctx, deleteQuery, deleteParams)
+		if err != nil {
+			log.Printf("Failed to delete old unconsolidated %s relationship: %v", rel.RelationType, err)
+			return err
+		}
+
+		log.Printf("Successfully consolidated %s relationship: deleted (%s -> %s), created (%s -> %s)",
+			rel.RelationType, rel.FromID, rel.ToID, consolidatedFrom, consolidatedTo)
+	} else {
+		log.Printf("Updated %s relationship consolidation status: %s -> %s",
+			rel.RelationType, rel.FromID, rel.ToID)
+	}
+
+	return nil
+	if err != nil {
+		log.Printf("Warning: Failed to consolidate %s relationship %s -> %s: %v",
+			rel.RelationType, consolidatedFrom, consolidatedTo, err)
+	} else {
+		log.Printf("Successfully consolidated %s relationship %s -> %s",
+			rel.RelationType, consolidatedFrom, consolidatedTo)
+	}
+
 	return err
 }
 
@@ -826,23 +910,39 @@ func (h *Handler) ResetConsolidation(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// Reset all nodes to unconsolidated
-	queries := []string{
+	nodeQueries := []string{
 		`MATCH (s:System) WHERE s.embedded = true SET s.consolidated = false, s.consolidation_score = 0`,
 		`MATCH (st:Stock) WHERE st.embedded = true SET st.consolidated = false, st.consolidation_score = 0`,
 		`MATCH (f:Flow) WHERE f.embedded = true SET f.consolidated = false, f.consolidation_score = 0`,
 	}
 
-	for _, query := range queries {
+	for _, query := range nodeQueries {
 		_, err := h.db.ExecuteQuery(ctx, query, nil)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset consolidation: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset node consolidation: " + err.Error()})
 			return
 		}
 	}
 
-	log.Println("Reset all nodes to unconsolidated status")
+	// Reset all relationships to unconsolidated (using actual relationship types)
+	relationshipQueries := []string{
+		`MATCH ()-[r:DESCRIBES]->() SET r.consolidated = false, r.consolidation_score = 0`,
+		`MATCH ()-[r:DESCRIBES_STATIC]->() SET r.consolidated = false, r.consolidation_score = 0`,
+		`MATCH ()-[r:CAUSAL_LINK]->() SET r.consolidated = false, r.consolidation_score = 0`,
+		`MATCH ()-[r:CHANGES]->() SET r.consolidated = false, r.consolidation_score = 0`,
+	}
+
+	for _, query := range relationshipQueries {
+		_, err := h.db.ExecuteQuery(ctx, query, nil)
+		if err != nil {
+			log.Printf("Warning: Failed to reset relationship consolidation: %v", err)
+			// Continue with other relationship types
+		}
+	}
+
+	log.Println("Reset all nodes and relationships to unconsolidated status")
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "All nodes reset to unconsolidated status - ready for re-consolidation",
+		"message": "All nodes and relationships reset to unconsolidated status - ready for re-consolidation",
 	})
 }

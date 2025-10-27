@@ -48,8 +48,12 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"neo4j": "connected but no data"})
 	})
 
-	// API routes
+	r.POST("/login", h.LoginHandler)
+
+	// API routes (protected by JWT Auth)
 	api := r.Group("/api/v1")
+	// Apply authentication middleware to all /api/v1 routes
+	api.Use(handlers.AuthMiddleware())
 	{
 		// Health Check
 		api.GET("/health", h.HealthCheck)
@@ -86,6 +90,9 @@ func main() {
 
 		// Debug Endpoint - Test name synthesis between two nodes
 		api.GET("/debug/synthesis", h.DebugSynthesis)
+
+		// Debug Endpoint - Check consolidation status of all relationships
+		api.GET("/debug/relationship-status", h.DebugRelationshipConsolidationStatus)
 	}
 
 	port := os.Getenv("PORT")

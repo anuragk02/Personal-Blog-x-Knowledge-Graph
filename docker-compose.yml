@@ -8,6 +8,7 @@ services:
       - NEO4J_USER=neo4j
       - NEO4J_PASSWORD=password
       - GEMINI_API_KEY=AIzaSyD5JGQI54cH3K7gDrPOK55I7zKd0ldEcW8
+      - JWT_SECRET_KEY=@nuragK02
     volumes:
       - ./backend:/app
     depends_on:

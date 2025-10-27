@@ -306,3 +306,67 @@ Please provide the response in this exact JSON format:
 		"synthesized_description": description,
 	})
 }
+
+// DebugRelationshipConsolidationStatus - Check consolidation status of all relationships
+func (h *Handler) DebugRelationshipConsolidationStatus(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	// Query all relationships with their consolidation status
+	query := `
+		MATCH (from)-[r]-(to)
+		WHERE type(r) IN ['DESCRIBES', 'CONSTITUTES']
+		RETURN type(r) as relationship_type,
+		       from.id as from_id,
+		       to.id as to_id,
+		       r.consolidated as consolidated,
+		       r.consolidation_score as consolidation_score,
+		       from.consolidated as from_consolidated,
+		       to.consolidated as to_consolidated
+		ORDER BY r.consolidated ASC, type(r), from.id
+	`
+
+	records, err := h.db.ExecuteRead(ctx, query, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to query relationships: " + err.Error()})
+		return
+	}
+
+	var relationships []gin.H
+	unconsolidatedCount := 0
+	consolidatedCount := 0
+
+	for _, record := range records {
+		relConsolidated := false
+		if consolidated := record["consolidated"]; consolidated != nil {
+			relConsolidated = consolidated.(bool)
+		}
+
+		consolidationScore := 0
+		if score := record["consolidation_score"]; score != nil {
+			consolidationScore = int(score.(int64))
+		}
+
+		if relConsolidated {
+			consolidatedCount++
+		} else {
+			unconsolidatedCount++
+		}
+
+		relationships = append(relationships, gin.H{
+			"relationship_type":   record["relationship_type"],
+			"from_id":             record["from_id"],
+			"to_id":               record["to_id"],
+			"consolidated":        relConsolidated,
+			"consolidation_score": consolidationScore,
+			"from_consolidated":   record["from_consolidated"],
+			"to_consolidated":     record["to_consolidated"],
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"total_relationships":          len(relationships),
+		"consolidated_relationships":   consolidatedCount,
+		"unconsolidated_relationships": unconsolidatedCount,
+		"relationships":                relationships,
+	})
+}

@@ -2,6 +2,17 @@ package models
 
 import "time"
 
+type LoginRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+type User struct {
+	UUID 	string    `json:"uuid"`
+	Username string    `json:"username"`
+	Password string    `json:"password"` // Hashed password
+}
+
 // Request models (used for creating entities - no ID field)
 type NarrativeRequest struct {
 	Title   string `json:"title"`

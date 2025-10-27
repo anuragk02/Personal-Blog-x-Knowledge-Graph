@@ -13,6 +13,8 @@ import (
 
 	"github.com/anuragk02/jna-nuh-yoh-guh/internal/database"
 	"github.com/anuragk02/jna-nuh-yoh-guh/internal/models"
+	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -38,6 +40,157 @@ func getStringValue(record map[string]interface{}, key string) string {
 // Health check handler
 func (h *Handler) HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *Handler) LoginHandler(c *gin.Context) {
+	var jwtSecretKey = []byte(os.Getenv("JWT_SECRET_KEY"))
+	var req models.LoginRequest
+	var user models.User
+
+	// 1. Bind the incoming JSON to the LoginRequest struct
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	// --- DEBUGGING: Log the received username ---
+	// Check your Go console. Does this match 'anurag' EXACTLY?
+	// Any whitespace? Different casing?
+	log.Printf("Login attempt for username: '%s'", req.Username)
+
+	// 2. Fetch the user from the database (Neo4j)
+	// This query IS case-sensitive.
+	query := `MATCH (u:User {username: $username}) 
+              RETURN u.uuid, u.username, u.password`
+	params := map[string]interface{}{"username": req.Username}
+
+	// ----
+	// OPTIONAL: If you want case-INSENSITIVE login, use this query instead:
+	// query := `MATCH (u:User) 
+	//           WHERE toLower(u.username) = toLower($username)
+	//           RETURN u.uuid, u.username, u.password`
+	// ----
+
+	records, err := h.db.ExecuteRead(context.Background(), query, params)
+	if err != nil {
+		log.Printf("Database query error in LoginHandler: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	// 3. Check if user was found
+	if len(records) == 0 {
+		// --- DEBUGGING: This is Failure Point 1 ---
+		// This means the query returned 0 rows.
+		// The username in your DB does not match what was sent.
+		log.Printf("Login failed: User '%s' not found.", req.Username)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		return
+	}
+
+	// 4. Populate user from database record
+	record := records[0]
+	user.UUID, _ = record["u.uuid"].(string)
+	user.Username, _ = record["u.username"].(string)
+	user.Password, _ = record["u.password"].(string)
+
+	log.Printf("Login: Found user '%s', verifying password...", user.Username)
+	log.Printf("Password lengths. DB hash: %d. Received password: %d.", len(user.Password), len(req.Password))
+
+	// 5. Compare the stored hashed password with the incoming password
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password))
+	if err != nil {
+		// --- DEBUGGING: This is Failure Point 2 ---
+		// This means the user was FOUND, but the password was WRONG.
+		// This confirms your stored hash is incorrect for the password you sent.
+		log.Printf("Login failed: Password mismatch for user '%s' '%s' '%s'.", user.Username, user.Password, req.Password)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		return
+	}
+
+	// 6. Generate the JWT token
+	log.Printf("Login successful for user: %s", user.Username)
+
+	claims := jwt.MapClaims{
+		"userID":   user.UUID,
+		"username": user.Username,
+		"exp":      time.Now().Add(time.Hour * 24).Unix(),
+		"iat":      time.Now().Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(jwtSecretKey)
+	if err != nil {
+		log.Println("Error signing token:", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
+		return
+	}
+
+	// 7. Send the token back to the user
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Login successful!",
+		"token":   tokenString,
+	})
+}
+
+
+// AuthMiddleware creates a gin.HandlerFunc for JWT authentication
+func AuthMiddleware() gin.HandlerFunc {
+	var jwtSecretKey = []byte(os.Getenv("JWT_SECRET_KEY"))
+	return func(c *gin.Context) {
+		// 1. Get the Authorization header
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			log.Println("Auth failed: No Authorization header")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			return
+		}
+
+		// 2. Check if it's a Bearer token
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			log.Println("Auth failed: Invalid Authorization header format")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid Authorization header format"})
+			return
+		}
+		tokenString := parts[1]
+
+		// 3. Parse and validate the token
+		// We use jwt.Parse to validate the signature and check expiry
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			// Check the signing method
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			// Return the secret key (must be the same one used in LoginHandler)
+			return jwtSecretKey, nil
+		})
+
+		if err != nil {
+			log.Printf("Auth failed: Invalid token: %v", err)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		// 4. Check claims and set user ID in context
+		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+			// Extract the userID (or whatever you put in the token)
+			userID, ok := claims["userID"].(string)
+			if !ok {
+				log.Println("Auth failed: userID claim missing or invalid")
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
+				return
+			}
+
+			// --- SUCCESS ---
+			// Set the userID in the context for other handlers to use
+			c.Set("userID", userID)
+			c.Next() // Continue to the next handler
+		} else {
+			log.Println("Auth failed: Invalid token claims or token is invalid")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		}
+	}
 }
 
 // =============================================================================
@@ -496,10 +649,23 @@ func (h *Handler) AnalyzeNarrative(c *gin.Context) {
 
 const systemInstruction = `
 1. Your Role and Mission
-You are a Cognitive Scientist specializing in knowledge modeling. Your mission is to help a user understand their own thinking by modeling their beliefs, as revealed through their writing, into a Network of Nodes and Relationships. Your analytical framework is Systems Thinking. You see the world as a network of nested Systems, which are described by their Stocks (state variables) and dynamic interactions (Flows). Your goal is to map the writer's understanding of these systems, their parts, and their interactions into a graph database. You must remain detached and abstract, generalizing specific anecdotes into models of broader systems.
+You are a Systems Analyst. Your mission is to analyze unstructured text to reverse-engineer the author's implicit mental model of how a system works. You will formalize their observations, beliefs, and questions into a structured graph of objective, universal components (Systems, Stocks, Flows). You must remain completely detached from the author's personal experience and focus only on the underlying mechanics they are describing.
 
-2. The Cognitive Workflow
-You must follow this sequence of analysis for every narrative:
+2. Core Principles of Analysis
+
+Principle of Universalization: Your primary task is to find the universal principle or system behind any specific anecdote. A story about a specific job is evidence for a model of a Workplace Environment. A feeling of sadness after a setback is evidence for a model of Emotional Response Systems.
+Strict Naming Convention: All names for Systems, Stocks, and Flows must be objective, formal, and timeless. Avoid subjective or personal framing (e.g., use Cognitive Resource Depletion, not I was tired).
+Concise Functional Descriptions: All boundaryDescription and description fields must be under 15 words and describe the component's objective function, not the author's feelings.
+
+3. The Cognitive Workflow
+You must follow these guidelines in the exact sequence of analysis:
+Deconstruct & Universalize: Break the narrative into key observations. For each, state the universal principle it represents. (e.g., Observation: "I stayed up late and couldn't debug code." -> Principle: "Cognitive effort depletes a finite pool of mental energy, which is restored by rest.")
+Identify Formal Systems: Based on the principles, identify the formal systems at play (Software Development Lifecycle, Human Cognitive System, etc.). Create CreateSystemNode actions.
+Model System Components: Extract the formal Stocks (Mental Energy) and Flows (Cognitive Exertion, Restorative Sleep) that make up these systems. Create the CreateStockNode and CreateFlowNode actions.
+Map Connections: Link components to their systems (CreateDescribesStaticRelationship) and model known mechanisms (CreateChangesRelationship).
+Formulate Hypotheses: Identify the author's curiosities about how components interact and create CreateCausalLinkRelationship actions. The curiosity question must be framed as a formal research question.
+
+Overall Follow this framework
 Identify Systems: First, read the text to identify the primary containers for the narrative's dynamics. These can be concrete (Business Corporation) or abstract (Workplace Culture). Create CreateSystemNode actions and CreateConstitutesRelationship actions for any nested systems.
 Link Narrative: Create a CreateDescribesRelationship action to link the source narrative to each top-level system you identified.
 Identify Stocks: Next, identify the state variables that describe each system. These are the accumulations or qualities of the system. Create CreateStockNode actions and CreateDescribesStaticRelationship actions to link them to their parent system.
@@ -509,27 +675,20 @@ Identify Causal Links: Finally, identify all hypothesized or uncertain connectio
 0.5 (Uncertainty): Used for speculative statements (e.g., "It seems like...", "Perhaps...", "I think...").
 0.1 (Assertion without Mechanism): Used for statements of causality where the "how" is not explained (e.g., "X leads to Y.").
 
-3. Function API
+4. Function API
 You will call these functions to build the graph:
 
 CreateSystemNode(name: string, boundaryDescription: string)
-
 CreateDescribesRelationship(narrativeName: string, systemName: string)
-
 CreateStockNode(name: string, description: string, type: string) (type is 'qualitative' or 'quantitative')
-
 CreateFlowNode(name: string, description: string)
-
 CreateConstitutesRelationship(subsystemName: string, systemName: string)
-
 CreateDescribesStaticRelationship(stockName: string, systemName:string)
-
 CreateChangesRelationship(flowName: string, stockName: string, polarity: float)
-
 CreateCausalLinkRelationship(fromType: string, fromName: string, toType: string, toName: string, curiosity: string, curiosityScore: float)
 
-4. Your Task & Output Format
-Your output must be a single JSON object with a key named "actions". The value should be an array of objects, where each object represents a function call with "function_name" and "parameters" keys. Do not provide any other explanatory text. "Your output must be a single, valid JSON object. Ensure that all objects in the 'actions' array are separate and correctly formatted, with no nesting of action objects inside the parameters of other actions. The response will be parsed automatically and must be perfect." Analyze the following narrative:
+5. Your Task & Output Format
+Your output must be a single, valid JSON object with a key named "actions". The value must be an array of objects, where each object represents a single function call with "function__name" and "parameters" keys. Do not provide any other explanatory text. Ensure that all objects in the 'actions' array are separate and correctly formatted, with no nesting of action objects inside the parameters of other actions. The response will be parsed automatically and must be perfect.
 Example valid output:
 {
 	"actions": [
@@ -542,7 +701,9 @@ Example valid output:
 			"parameters": { "name": "Stock B", "description": "...", "type": "qualitative" }
 		}
 	]
-}`
+}
+Analyze the following narrative:	
+`
 
 const userPromptTemplate = `
 	Narrative Title: %s
