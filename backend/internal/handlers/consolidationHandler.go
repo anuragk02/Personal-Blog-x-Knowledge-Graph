@@ -893,16 +893,18 @@ func (h *Handler) processRelationshipConsolidation(ctx context.Context, rel mode
 			rel.RelationType, rel.FromID, rel.ToID)
 	}
 
-	return nil
+
 	if err != nil {
 		log.Printf("Warning: Failed to consolidate %s relationship %s -> %s: %v",
 			rel.RelationType, consolidatedFrom, consolidatedTo, err)
+		return err
 	} else {
 		log.Printf("Successfully consolidated %s relationship %s -> %s",
 			rel.RelationType, consolidatedFrom, consolidatedTo)
+		return nil
 	}
 
-	return err
+
 }
 
 // ResetConsolidation - Reset all nodes to unconsolidated status for re-consolidation
